@@ -3,7 +3,9 @@
 import { ArrowRightIcon, EraserIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { authClient } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
+import { AuthDialog } from "../../_components/auth-dialog";
 import { type Autonomy, type Jobs, type Personality, speciesEmoji } from "@/lib/roary-character";
 import type { Gear } from "./roary-figure";
 import { Field, OptionGrid } from "./stations";
@@ -198,6 +200,41 @@ export function JobsStation({
   );
 }
 
+/** Who the hire will belong to. Signing in is optional: guests keep today's browser-only hire. */
+function OfferAccountLine({ name }: { readonly name: string }) {
+  const { data: session, isPending } = authClient.useSession();
+  if (isPending) return null;
+  const user = session?.user;
+  if (user) {
+    return (
+      <p className="font-mono text-muted-foreground text-xs uppercase">
+        Signing as <span className="text-ink">{user.email}</span> · {name} joins Your Roarys
+      </p>
+    );
+  }
+  return (
+    <p className="font-mono text-muted-foreground text-xs uppercase">
+      <AuthDialog
+        trigger={
+          <button className="text-ink underline" type="button">
+            Sign in
+          </button>
+        }
+      />{" "}
+      to keep {name} on your account · or{" "}
+      <AuthDialog
+        initialMode="sign-up"
+        trigger={
+          <button className="text-ink underline" type="button">
+            sign up
+          </button>
+        }
+      />{" "}
+      · or just sign below as a guest
+    </p>
+  );
+}
+
 export function OfferStation({
   name,
   summary,
@@ -356,6 +393,7 @@ export function OfferStation({
             />
           </div>
 
+          <OfferAccountLine name={name} />
           <button
             className="plate inline-flex items-center justify-center gap-3 bg-safety px-6 py-4 font-mono text-ink text-lg uppercase transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-label disabled:text-muted-foreground"
             disabled={!hasInk}

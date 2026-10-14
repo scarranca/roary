@@ -45,5 +45,7 @@ export const roaryProfiles = pgTable("roary_profiles", {
   autonomy: text("autonomy", { enum: ["suggest", "open_prs"] }).notNull().default("suggest"),
   repo: text("repo"),
   avatarUrl: text("avatar_url"),
+  // Neon Auth user id of whoever signed the offer letter; null for guest hires.
+  userId: text("user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

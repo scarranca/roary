@@ -1,0 +1,1 @@
+ALTER TABLE "roary_profiles" ADD COLUMN "user_id" text;

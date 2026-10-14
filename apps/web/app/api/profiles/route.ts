@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db, schema } from "../../../../../agent/lib/db";
+import { getSessionUserId } from "@/lib/auth/server";
 import { characterSchema } from "@/lib/roary-character";
 
 // Saves a Roary hired in the fitting room (#15). Images stay in the browser for
@@ -28,10 +29,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "That hire is missing something. Try signing again." }, { status: 400 });
   }
   const { name, look, personality, jobs, autonomy } = parsed.data;
+  // A signed-in hire belongs to the session's user; the body never carries an id.
+  const userId = await getSessionUserId();
   try {
     const [row] = await db
       .insert(schema.roaryProfiles)
-      .values({ name, species: look.character.species, look, personality, jobs, autonomy })
+      .values({ name, species: look.character.species, look, personality, jobs, autonomy, userId })
       .returning({ id: schema.roaryProfiles.id });
     return Response.json({ id: row.id }, { status: 201 });
   } catch (error) {
