@@ -1,5 +1,6 @@
 import { ArrowRightIcon } from "lucide-react";
 import Link from "next/link";
+import { AccountMenu } from "./account-menu";
 import { RoaryMark } from "./roary-mark";
 
 const NAV = [
@@ -28,6 +29,7 @@ export function SiteHeader({ hideHire = false }: { readonly hideHire?: boolean }
               {label}
             </Link>
           ))}
+          <AccountMenu />
           {hideHire ? null : (
             <Link
               className="plate ml-1 inline-flex items-center gap-2 bg-safety px-4 py-2 font-mono text-sm text-ink uppercase transition-transform hover:-translate-y-px"
