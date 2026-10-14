@@ -10,11 +10,10 @@ export default githubChannel({
   credentials: connectGitHubCredentials("github/roary"),
   // A merged PR labeled `feature` or `launch` gets a launch video (agent/skills/launch-video.md).
   onPullRequest: (ctx, event) => {
-    const pr = event.raw.pull_request as
-      | { merged?: boolean; title?: string; labels?: { name?: string }[] }
-      | undefined;
-    const isLaunch = pr?.labels?.some((label) => label.name && LAUNCH_LABELS.has(label.name.toLowerCase()));
-    if (event.action !== "closed" || pr?.merged !== true || !isLaunch) return null;
+    // `raw` is the webhook's `pull_request` object itself (eve unwraps it).
+    const pr = event.raw as { merged?: boolean; title?: string; labels?: { name?: string }[] };
+    const isLaunch = pr.labels?.some((label) => label.name && LAUNCH_LABELS.has(label.name.toLowerCase()));
+    if (event.action !== "closed" || pr.merged !== true || !isLaunch) return null;
     return {
       auth: defaultGitHubAuth(ctx),
       title: `Launch video for PR #${event.pullRequestNumber}`,
