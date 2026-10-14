@@ -57,7 +57,7 @@ export default defineMcpClientConnection({
 });
 ```
 
-- **GitHub:** use `@github-tools/sdk/eve` (`createGithubTools`) in `agent/tools/github.ts`, with `githubChannel` from `eve/channels/github` in `agent/channels/github.ts`.
+- **GitHub:** tools come from the `@github-tools/eve-extension` mount in `agent/extensions/github.ts` (registry item `extension/github-tools`; tools appear as `github__<name>` at runtime). `createGithubTools` from `@github-tools/sdk/eve` is deprecated and not replay-durable, so don't add `agent/tools/github.ts`. The channel is `githubChannel` from `eve/channels/github` in `agent/channels/github.ts`. Both use the Vercel Connect connector `github/roary`.
 - **Schedules:** `defineSchedule` from `eve/schedules` (5-field cron, **UTC**). Locally they only run via `POST /eve/v1/dev/schedules/<name>`.
 - **Memory:** `defineMemory` from `eve/memory`, in `agent/memory/<slot>.ts`.
 - **Vercel (MCP):** `agent/connections/vercel.ts` → `defineMcpClientConnection({ url: 'https://mcp.vercel.com', ... })`. **UNVERIFIED for eve:** check whether `eve add connection/vercel` exists (`eve registry search vercel`) and which auth it uses before hand-writing it. Read-only usage only: list deployments, runtime errors/logs. **Never** promote, roll back, or change env vars/domains; Roary may only *suggest* a rollback.
@@ -206,7 +206,7 @@ neon inspect db table-sizes                         # storage
 |---|---|---|---|
 | 1 | Agent core + personality | `agent/agent.ts`, `agent/instructions.md`, `agent/memory/` | `eve dev` chats as Roary, `eve info` is clean |
 | 2 | Error triage | `agent/connections/{sentry,posthog}.ts`, `agent/skills/triage-error.md` | Given a Sentry issue, Roary posts the root cause, user impact and the suspect commit |
-| 3 | Fix PRs | `agent/tools/github.ts`, `agent/channels/github.ts` | Roary opens a PR with the fix + test that links the Sentry issue, and a human merges |
+| 3 | Fix PRs | `agent/extensions/github.ts`, `agent/channels/github.ts` | Roary opens a PR with the fix + test that links the Sentry issue, and a human merges |
 | 4 | Launch review | `agent/connections/vercel.ts`, `agent/schedules/daily-launch-review.ts`, `agent/skills/review-launch.md` | Daily report (and one per prod deploy): Vercel deploys + PRs merged in the last 24h, with the error and usage change for each |
 | 5 | Launch videos | `agent/tools/render_launch_video.ts`, `agent/skills/launch-video.md`, `agent/sandbox/workspace/video/` | A merged `feature` PR produces an MP4, uploaded to Vercel Blob and linked on the PR |
 
