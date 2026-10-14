@@ -88,7 +88,8 @@ export default defineChannel({
         `This was started automatically by a Sentry alert; nobody is watching this session, so post your incident report on GitHub.`;
 
       waitUntil(
-        from(`sentry-issue-${issue.id}`).send(message, {
+        // One address per claim, so a re-claimed issue gets a fresh session instead of steering a parked one.
+        from(`sentry-issue-${issue.id}-${claimed[0]!.id}`).send(message, {
           auth: {
             authenticator: "sentry-webhook",
             principalType: "service",
