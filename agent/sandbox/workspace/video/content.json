@@ -1,0 +1,14 @@
+{
+  "product": "acme/checkout",
+  "title": "One-tap checkout",
+  "tagline": "Pay in a single tap with saved cards and Apple Pay.",
+  "bullet1": "Saved cards appear instantly at checkout",
+  "bullet2": "Apple Pay and Google Pay in one tap",
+  "bullet3": "Smarter retries when a card is declined",
+  "metricLabel": "Time to pay",
+  "metricBefore": "48s",
+  "metricAfter": "9s",
+  "impact": "5x faster checkout for every shopper",
+  "authors": "@ana, @luis, @mei",
+  "prUrl": "github.com/acme/checkout/pull/42"
+}

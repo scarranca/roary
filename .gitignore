@@ -12,3 +12,4 @@ dist/
 .output/
 .vercel
 .claude/worktrees/
+.hyperframes/
