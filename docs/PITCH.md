@@ -66,7 +66,7 @@ No secrets in code. GitHub and Sentry go through **Vercel Connect**: GitHub is a
 Model is `anthropic/claude-sonnet-5` via AI Gateway, so you pay per token with one bill and can swap models without code changes. A triage plus a fix is one conversation with a handful of tool calls. We haven't measured the per-incident cost yet; AI Gateway reports it per request. Compute is Fluid functions plus a short Sandbox for renders, so there's nothing idle to pay for. *(Don't quote a dollar figure.)*
 
 **"How does it scale to a real team or many repos?"**
-eve sessions are durable workflows, so long investigations survive retries and restarts. Each incident is its own session, and Neon keeps the shared record (incidents, launches) the desk reads. Adding a repo means installing the GitHub App there. Adding a team means another `eve deploy` with their Connect connections. Scheduled launch reviews become Vercel Cron Jobs automatically.
+eve sessions are durable workflows, so long investigations survive retries and restarts. Each incident is its own session, and Neon keeps the shared record (incidents, launches) the desk reads. Adding a repo means installing the GitHub App there. Adding a team means another `eve deploy` with their Connect connections. Scheduled launch reviews (planned) would become Vercel Cron Jobs automatically.
 
 **"Why eve / why Vercel?"**
 Everything an AI teammate needs is already a Vercel primitive: durable agent runtime (eve), model routing (AI Gateway), OAuth to third-party tools (Connect), isolated code execution (Sandbox), file hosting (Blob), cron (schedules), and deploy previews as CI for its own PRs. We wrote an agent, not infrastructure, and that's why a hackathon team could ship it in a day.

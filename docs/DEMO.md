@@ -14,7 +14,7 @@ As of 2:05pm PT, production (`https://roary-rho.vercel.app`) runs only the merge
 | Beat | Needs merged + `npx eve deploy` by T-30 | Owner | If it isn't merged |
 |---|---|---|---|
 | Hire in the UI | #29 (web app), #30 (fitting room) | Martha | Fallback only: the PR #29 preview (SSO-protected, so sign in first) or screenshots |
-| Chat in the browser | #33 (`none()` auth on the eve channel) | Santiago | Use `npx eve remote connect --url https://roary-rho.vercel.app` (a TUI that talks to prod, not a local server) |
+| Chat in the browser | #33 (`none()` auth on the eve channel) | Santiago | Use `npx eve remote connect --url https://roary-rho.vercel.app` (a TUI that talks to prod, not a local server). Second fallback, live on prod today with no merge needed: comment `@roary <prompt>` on an issue in roary-demo-shop, since the GitHub channel (#26) is deployed |
 | Triage report | Triage skill (#6/#7, in progress) | — | The prompt below is written to work without the skill, since it names every project |
 | Fix PR | #32 (fix-error skill) | Santiago | Fallback only: show demo-shop PR #1 |
 | Launch video | #31 (template, render tool, PR trigger) | Santiago | Fallback only: the pre-rendered video (**the Blob URL doesn't exist yet, see T-30**) |
@@ -32,11 +32,11 @@ After the last merge: `npx eve deploy`, then `npx eve info --json` on the deploy
 | # | Tab | URL |
 |---|---|---|
 | 1 | Hire Roary (landing → `/hire`) | `https://roary-rho.vercel.app/hire` (after #29/#30 deploy) |
-| 2 | Roary chat (`/desk`) | `https://roary-rho.vercel.app/desk`, or a terminal running `npx eve remote connect --url https://roary-rho.vercel.app` |
+| 2 | Roary chat (`/desk`) | `https://roary-rho.vercel.app/desk`, or a terminal running `npx eve remote connect --url https://roary-rho.vercel.app`, or an issue in roary-demo-shop where you comment `@roary ...` |
 | 3 | Bug PR, "Add bundle discount for multi-item carts" | `https://github.com/scarranca/roary-demo-shop/pulls` (the open break PR, see `scripts/demo-reset.md` §B) |
 | 4 | The shop | `https://roary-demo-shop.vercel.app` |
 | 5 | Terminal: traffic command typed in, **not** run yet | see §3 |
-| 6 | Sentry issues, project `javascript-nextjs-k4` | `https://roary.sentry.io/issues/?project=javascript-nextjs-k4` |
+| 6 | Sentry issues, project `javascript-nextjs-k4` | `https://roary.sentry.io/issues/` (filter to `javascript-nextjs-k4`; `project=` in the URL takes the numeric id, so verify at T-30) |
 | 7 | PostHog project 665339, `checkout_failed` vs `checkout_completed` trend | `https://us.posthog.com/project/665339` |
 | 8 | Fallback tab: demo-shop PR #1 + launch video Blob URL + dry-run screenshots | `https://github.com/scarranca/roary-demo-shop/pull/1` |
 
@@ -56,6 +56,7 @@ After the last merge: `npx eve deploy`, then `npx eve info --json` on the deploy
 
 ### T-10 min
 - [ ] **Sign-ins.** GitHub (scarranca, with merge rights on roary-demo-shop), Sentry (org `roary`), PostHog, Vercel (team `roary-hack`).
+- [ ] **Remote chat auth.** Run `vercel env pull` first. Smoke-test with `npx eve remote invoke --url https://roary-rho.vercel.app "hi"`. If it fails with 401 or `principal_required`, add `-H "Authorization: Bearer $VERCEL_OIDC_TOKEN"` (from `.env.local`) to `eve remote connect` / `invoke`.
 - [ ] **Vercel Connect (Sentry is user-scoped).** In the exact chat surface you'll use on stage, ask Roary "List the 3 most recent Sentry issues in project javascript-nextjs-k4." If it posts a `connect.vercel.com/authorize/...` link, finish it now. Otherwise the link shows up mid-demo.
 - [ ] Ask Roary the PostHog question once ("How many checkout_failed events in project 665339 in the last 24h?") so the MCP connection is warm.
 - [ ] Open every tab from §1. Clear the chat (start a new session). Close Slack, mail and notifications (Do Not Disturb on).

@@ -9,7 +9,7 @@ Built for the **Vercel Fast Forward Hackathon** (Oct 14, 2026).
 |---|---|
 | 🟢 **Roary in production** | https://roary-rho.vercel.app |
 | 🛒 **Demo shop it watches** | https://roary-demo-shop.vercel.app ([repo](https://github.com/scarranca/roary-demo-shop)) |
-| 🛠️ **Roary's first autonomous fix PR** | [roary-demo-shop#1](https://github.com/scarranca/roary-demo-shop/pull/1): root cause + one-line guard + 2 regression tests, opened by Roary's GitHub app. *Open; a human merges.* |
+| 🛠️ **Roary's first autonomous fix PR** | [roary-demo-shop#1](https://github.com/scarranca/roary-demo-shop/pull/1): root cause + one-line guard + 2 regression tests, opened by Roary's GitHub app. *A human reviews and merges.* |
 | 🎬 **Demo run-of-show / pitch** | [`docs/DEMO.md`](./docs/DEMO.md) · [`docs/PITCH.md`](./docs/PITCH.md) |
 
 **Proof so far:** a seeded bug made **24 of 42** checkouts fail. Roary named the line and the commit (`8d41418`), then opened a fix PR whose single-item test fails on the old code and passes on the fix.
