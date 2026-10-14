@@ -26,11 +26,14 @@ Call `list_incidents` (limit 20) and look for this issue by its Sentry short id 
 
 Call `get_sentry_issue` with the issue id (numeric id or short id). It returns the title, culprit, first/last seen, event and user counts, the permalink and the top in-app stack frames with source context.
 
-If it reports that the token is missing or fails, use the Sentry MCP tools instead: `sentry__get_sentry_resource` for the issue and its latest event, or `sentry__search_issues` if you only have a title. If neither works (for example `principal_required` in an automatic session), say so in the report and continue with what the trigger message told you.
+If it reports that the token is missing or fails, use the Sentry MCP tools instead: `sentry__get_sentry_resource` for the issue and its latest event, or `sentry__search_issues` if you only have a title.
 
 From the top in-app frame, note: **file path, line, function, the failing expression**, and `firstSeen`.
 
-If the issue doesn't exist or Sentry has no matching unresolved issue, say so in one line and stop. Don't post anything on GitHub.
+Stop here, and **don't post anything on GitHub**, if:
+
+- the issue doesn't exist or Sentry has no matching unresolved issue: say so in one line; or
+- you couldn't read the issue from Sentry at all (both paths failed, e.g. token missing and `principal_required` on the `sentry__*` tools in an automatic session). Never diagnose from the trigger message alone. Call `save_incident` with `status: "investigating"` and a `diagnosis` that says which access is missing (e.g. "SENTRY_AUTH_TOKEN not configured"), then reply with that in one line.
 
 ## 3. Measure user impact in PostHog
 
