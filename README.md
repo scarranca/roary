@@ -1,35 +1,47 @@
 # 🦁 Roary
 
 > **The teammate you hire, not the tool you configure.**
-> Roary is an AI engineer built on [Vercel eve](https://vercel.com/docs/eve) and hosted on Vercel. It's connected to your GitHub, Vercel, Sentry and PostHog. It notices when something breaks, figures out why, opens the fix, and makes a launch video when you ship something new. It stays friendly the whole time.
+> Roary is an AI engineer you hire onto your team. It watches Sentry and PostHog, works in your GitHub, and runs on [Vercel eve](https://vercel.com/docs/eve). When something breaks, it finds out why and opens the fix. When you ship, it makes the launch video. It never merges.
 
 Built for the **Vercel Fast Forward Hackathon** (Oct 14, 2026).
+
+| | |
+|---|---|
+| 🟢 **Roary in production** | https://roary-rho.vercel.app |
+| 🛒 **Demo shop it watches** | https://roary-demo-shop.vercel.app ([repo](https://github.com/scarranca/roary-demo-shop)) |
+| 🛠️ **Roary's first autonomous fix PR** | [roary-demo-shop#1](https://github.com/scarranca/roary-demo-shop/pull/1): root cause + one-line guard + 2 regression tests, opened by Roary's GitHub app. *A human reviews and merges.* |
+| 🎬 **Demo run-of-show / pitch** | [`docs/DEMO.md`](./docs/DEMO.md) · [`docs/PITCH.md`](./docs/PITCH.md) |
+
+**Proof so far:** a seeded bug made **24 of 42** checkouts fail. Roary named the line and the commit (`8d41418`), then opened a fix PR whose single-item test fails on the old code and passes on the fix.
 
 ---
 
 ## Why Roary
 
-Small teams ship fast and break things. The loop between *"users are hitting an error"* and *"a fix is merged"* is still manual. Someone checks Sentry, someone checks PostHog to see whether it matters, someone digs through the diff, and someone writes the fix. Then, when a good feature does ship, nobody has time to announce it properly.
+Small teams ship fast and break things. Getting from *"users are hitting an error"* to *"a fix is merged"* is still manual: someone checks Sentry, someone checks PostHog to see whether it matters, someone digs through the diff, someone writes the fix. And when a good feature ships, nobody has time to announce it.
 
-Roary closes that loop. You don't configure it like a dashboard. You **hire** it: it gets a name, a personality, access to your stack, and a clear job description.
+Roary closes that loop. You don't configure it like a dashboard. You **hire** it: it gets a name, a personality, access to your stack, and a job description.
 
-## What Roary does
+## Roary's 4 jobs
 
-| Job | Trigger | What happens |
-|---|---|---|
-| 🚨 **Understand errors as they happen** | Sentry issue / spike | Pulls the stack trace (Sentry MCP) and checks real user impact (PostHog MCP). Then it finds the commit that likely caused it (GitHub) and posts a plain-English diagnosis. |
-| 🛠️ **Suggest fixes or open PRs** | After diagnosis, or `@roary fix this` | Reproduces the problem in an eve sandbox, writes the patch and opens a PR that links the Sentry issue. **Merging always needs a human.** |
-| 🔍 **Review recent launches** | Daily schedule + each Vercel production deploy | Looks at what shipped in the last 24h (Vercel deployments + merged PRs). It compares errors before and after (Sentry + Vercel runtime logs) and usage (PostHog), then posts a short launch health report. If a deploy is clearly bad, it can *suggest* a rollback; a human runs it. |
-| 🎬 **Make launch videos** | A PR labeled `feature` / `launch` merges | Reads the PR and writes a [HyperFrames](https://hyperframes.heygen.com) HTML composition. It renders an MP4, uploads it to Vercel Blob and posts the link back on the PR, ready to share. |
-| 💛 **Be mindful and friendly** | Always | Says what it's confident about and what it isn't. Never blames people. It keeps quiet unless something matters, and asks before doing anything risky. |
+| Job | Trigger | What happens | Status |
+|---|---|---|---|
+| 🚨 **Triage errors** | Sentry issue, or ask in chat | Pulls the stack trace (Sentry MCP), counts affected users (PostHog MCP) and finds the likely culprit commit (GitHub). Then it posts a plain-English incident report with an explicit confidence level. | Connections live; triage skill in progress (#6/#7) |
+| 🛠️ **Open fix PRs** | After triage, or `@roary fix this` | Writes the minimal patch plus a regression test on a `roary/fix-*` branch and opens a PR linking the incident. **Merging always needs a human.** | Proven on `eve dev` ([shop#1](https://github.com/scarranca/roary-demo-shop/pull/1)); skill in progress (#32) |
+| 🔍 **Review launches** | Daily + each prod deploy | Summarizes what shipped in the last 24h and how errors and usage changed. It can *suggest* a rollback; a human runs it. | Planned |
+| 🎬 **Make launch videos** | A PR labeled `feature` / `launch` merges | Turns the PR into a [HyperFrames](https://hyperframes.heygen.com) composition, renders an MP4 in Vercel Sandbox, uploads it to Blob and posts the link on the PR. | Template done; render + trigger in progress (#31) |
+
+Always: **friendly and mindful.** Blameless, separates *what I saw* from *what I think*, stays quiet unless something matters, and asks before anything risky ([`agent/instructions.md`](./agent/instructions.md)).
+
+**Hire Roary web app** (landing, desk, a 3D "fitting room" to design your Roary, public chat): in progress (#29, #30, #33).
 
 ## How it maps to the judging criteria
 
-| Criterion (1/3 each) | Roary's answer |
-|---|---|
-| **Usefulness:** solves a real problem effectively | It cuts the time from error to fix (MTTR). One agent replaces four tabs (Sentry, PostHog, GitHub, the editor) and the triage meeting. |
-| **Creativity:** novel approach, technical originality | It's framed as a hire, not a tool: a persona, a job description, and it takes the initiative. It is also the first agent we know of that *celebrates* your launches by turning merged PRs into launch videos automatically. |
-| **Impact:** scale, value creation, execution | Any team on Vercel + GitHub + Sentry + PostHog can use it. It's built entirely on Vercel's platform (eve sessions, Workflows, Sandbox, Connect, AI Gateway, Blob), so it's production-shaped from day one and one `eve deploy` away for any Vercel team. |
+| Criterion (1/3 each) | Roary's answer | Proof |
+|---|---|---|
+| **Usefulness** | Error → fix with one teammate instead of four tabs (Sentry, PostHog, GitHub, editor) and a triage meeting. | 24 of 42 failing checkouts → root cause + fix PR with tests ([shop#1](https://github.com/scarranca/roary-demo-shop/pull/1)) |
+| **Creativity** | A hire, not a tool: you design it, give it a personality and a job description, and it takes initiative. It also *celebrates* launches by turning merged PRs into launch videos. | Hire fitting room, the locked "Merge PRs" switch, HyperFrames videos |
+| **Impact** | Any team on Vercel + GitHub + Sentry + PostHog can hire it. Every piece is a Vercel primitive (eve, AI Gateway, Connect, Sandbox, Blob, Cron), so it's production-shaped and one `eve deploy` away. Safe by design: humans merge. | Live at [roary-rho.vercel.app](https://roary-rho.vercel.app) |
 
 ## Architecture
 
@@ -51,42 +63,50 @@ Roary closes that loop. You don't configure it like a dashboard. You **hire** it
                                                     launch-video.mp4 → Vercel Blob
 ```
 
-**Stack:** Vercel (hosting) · eve · AI Gateway · Vercel Connect (OAuth for GitHub/Sentry/PostHog) · Vercel Sandbox · Vercel Workflows · Vercel Cron (eve schedules) · Vercel Blob (videos) · Neon Postgres + Drizzle (state) · HyperFrames (HeyGen) · TypeScript · Node 24.
+**Stack:** Vercel (hosting) · eve · AI Gateway · Vercel Connect (GitHub App + Sentry OAuth; PostHog via API key) · Vercel Sandbox · Vercel Workflows · Vercel Cron (eve schedules) · Vercel Blob (videos) · Neon Postgres + Drizzle (state) · HyperFrames (HeyGen) · TypeScript · Node 24.
 
-## Project layout (planned)
+## Project layout
+
+✅ = merged · 🚧 = in progress (open PR) · 📝 = planned
 
 ```
 agent/
-  agent.ts                 # defineAgent: model + settings
-  instructions.md          # Roary's personality, values, guardrails
+  agent.ts                 # defineAgent: model (claude-sonnet-5 via AI Gateway)   ✅
+  instructions.md          # Roary's personality, values, guardrails                ✅
   connections/
-    sentry.ts              # Sentry MCP (https://mcp.sentry.dev/mcp)
-    posthog.ts             # PostHog MCP (https://mcp.posthog.com/mcp)
-    vercel.ts              # Vercel MCP (https://mcp.vercel.com): deployments, runtime logs
+    sentry.ts              # Sentry MCP via Vercel Connect (sentry/sentry)          ✅
+    posthog.ts             # PostHog MCP (personal API key)                         ✅
+    vercel.ts              # Vercel MCP: deployments, runtime logs (read-only)      📝
   channels/
-    github.ts              # @roary mentions + webhooks
+    eve.ts                 # chat (browser auth for the public demo: #33)           ✅ 🚧
+    github.ts              # @roary mentions + webhooks (Vercel Connect)            ✅
+  extensions/
+    github.ts              # @github-tools/eve-extension: PRs, commits, comments    ✅
   tools/
-    github.ts              # @github-tools/sdk: PRs, comments, reviews
-    render_launch_video.ts # runs HyperFrames render in the sandbox, uploads to Blob
-    save_incident.ts       # upsert an incident in Neon  ✅
-    list_incidents.ts      # read incidents from Neon  ✅
+    save_incident.ts       # upsert an incident in Neon                             ✅
+    list_incidents.ts      # read incidents from Neon                               ✅
+    render_launch_video.ts # HyperFrames render in Sandbox → Blob                   🚧 #31
   skills/
-    triage-error.md        # error → diagnosis → fix playbook
-    review-launch.md       # 24h launch health report playbook
-    launch-video.md        # PR → HyperFrames composition playbook
+    triage-error.md        # error → diagnosis playbook                             🚧 #6/#7
+    fix-error.md           # diagnosis → patch + regression test PR                 🚧 #32
+    review-launch.md       # 24h launch health report playbook                      📝
+    launch-video.md        # PR → HyperFrames composition playbook                  🚧 #31
   schedules/
-    daily-launch-review.ts # cron: morning launch report
-  memory/
-    team.ts                # stable facts about the repo & team
+    daily-launch-review.ts # cron: morning launch report                            📝
+  memory/                  # stable facts about the repo & team                     📝
   lib/
-    db.ts                  # Neon Postgres (pg pool + Drizzle)  ✅
-    schema.ts              # incidents, launches  ✅
-  sandbox/sandbox.ts       # Vercel Sandbox on Vercel, just-bash locally  ✅
-  sandbox/workspace/video/ # HyperFrames launch-video template (content via content.json)  ✅
-drizzle/                   # SQL migrations (drizzle-kit)
-neon.ts                    # Neon services config (neon deploy)
-scripts/db-smoke.ts        # end-to-end DB check
-evals/                     # eve evals for triage quality
+    db.ts                  # Neon Postgres (pg pool + Drizzle)                      ✅
+    schema.ts              # incidents, launches                                    ✅
+  sandbox/sandbox.ts       # Vercel Sandbox on Vercel, just-bash locally            ✅
+  sandbox/workspace/video/ # branded HyperFrames template (content.json)            ✅
+apps/web/                  # Hire Roary web app: landing, /desk, /hire fitting room ✅
+drizzle/                   # SQL migrations (drizzle-kit)                           ✅
+neon.ts                    # Neon services config (neon deploy)                     ✅
+scripts/db-smoke.ts        # end-to-end DB check                                    ✅
+scripts/seed-demo.ts       # seed/unseed past demo incidents + launches (SEED-)     ✅
+scripts/demo-reset.md      # restore / re-break the demo shop, clean Neon           ✅
+docs/DEMO.md · PITCH.md    # run-of-show, talk track, judge Q&A                     ✅
+evals/                     # eve evals for triage quality                           📝
 ```
 
 ## Getting started
@@ -159,14 +179,16 @@ vercel deploy            # preview: use this to test webhooks / @mentions
 
 Never commit `.env*` files.
 
-## 3-minute demo script
+## 3-minute demo
 
-1. **(0:00) The hire.** "Meet Roary, our newest engineer." Show the `instructions.md` personality and the three connections.
-2. **(0:30) Something breaks.** Push a commit with a deliberate bug to the demo app (also on Vercel). It deploys, we trigger the error, and Sentry fires.
-3. **(1:00) Roary investigates.** Live: Sentry stack trace → PostHog shows that "42 users hit this in checkout" → Vercel shows the deploy that introduced it → it points to the culprit commit.
-4. **(1:45) Roary fixes it.** A PR opens with the fix, a test and a friendly explanation. A human clicks merge.
-5. **(2:15) Roary celebrates.** We merge a `feature` PR. Roary renders and posts a launch video. **Play the video.**
-6. **(2:45) Close.** "Roary doesn't replace your team; it's the teammate who never sleeps and always says thank you."
+Full run-of-show with timings, exact prompts, fallbacks and the pre-demo checklist: **[`docs/DEMO.md`](./docs/DEMO.md)**. Reset commands: [`scripts/demo-reset.md`](./scripts/demo-reset.md).
+
+1. **(0:00) The hire.** "Meet Roary, our newest engineer." Design it in the Hire UI. "Merge PRs" is locked off.
+2. **(0:45) Something breaks.** A "bundle discount" PR merges into the demo shop, and simulated traffic shows single-item checkouts failing (24 of 42 in testing).
+3. **(1:05) Roary investigates.** Sentry stack trace → PostHog impact → GitHub culprit commit, in one incident report.
+4. **(1:50) Roary fixes it.** A PR opens with the fix, a regression test and a friendly explanation. A human clicks merge.
+5. **(2:15) Roary celebrates.** A merged `feature` PR gets a launch video. **Play the video.**
+6. **(2:45) Close.** "Roary doesn't replace your team. It's the teammate who never sleeps and always says thank you."
 
 ## Team
 

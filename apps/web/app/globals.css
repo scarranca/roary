@@ -1,0 +1,281 @@
+@import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-nylon: var(--nylon);
+  --color-cotton: var(--cotton);
+  --color-label: var(--label);
+  --color-safety: var(--safety);
+  --color-mane: var(--safety);
+  --color-mane-soft: var(--safety-soft);
+  --color-mane-ink: var(--ink);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-wait: var(--wait);
+  --color-wait-soft: var(--wait-soft);
+  --color-broken: var(--broken);
+  --color-broken-soft: var(--broken-soft);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 1px);
+  --radius-xl: calc(var(--radius) + 2px);
+}
+
+/* Not inline: font utilities must read the variables so each host's font loader can override them. */
+@theme {
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+}
+
+/*
+ * Industrial streetwear grammar: white cotton and black nylon as ground and ink,
+ * safety orange only for zip-tie tags, the primary action and the house-rules band.
+ * Single light theme on purpose: Roary is demoed on projectors in bright halls.
+ */
+:root {
+  color-scheme: light;
+  --cotton: #ffffff;
+  --label: #e6e6e6;
+  --ink: #0a0a0a;
+  --nylon: #1a1a1a;
+  --safety: #ff5a00;
+  --safety-soft: #ffe3d3;
+  --background: #f2f2f0;
+  --foreground: var(--ink);
+  --card: var(--cotton);
+  --card-foreground: var(--ink);
+  --popover: var(--cotton);
+  --popover-foreground: var(--ink);
+  --primary: var(--safety);
+  --primary-foreground: var(--ink);
+  --secondary: var(--label);
+  --secondary-foreground: var(--ink);
+  --muted: var(--label);
+  --muted-foreground: #4d4d4b;
+  --accent: var(--label);
+  --accent-foreground: var(--ink);
+  --destructive: #c8102e;
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--safety);
+  --ok: #17703a;
+  --ok-soft: #dcefe2;
+  --wait: #8a5a00;
+  --wait-soft: #fbedc9;
+  --broken: #c8102e;
+  --broken-soft: #fadde1;
+  --radius: 3px;
+}
+
+html {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scrollbar-color: var(--ink) var(--label);
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  caret-color: var(--safety);
+}
+
+::selection {
+  background: var(--safety);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--safety);
+  outline-offset: 3px;
+}
+
+a {
+  text-underline-offset: 0.25em;
+  text-decoration-thickness: 2px;
+}
+
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@layer components {
+  /* Heavy condensed caps: the jacket-back lettering. */
+  .type-display {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-stretch: 62%;
+    text-transform: uppercase;
+    line-height: 0.88;
+    letter-spacing: -0.01em;
+  }
+
+  /* Ordinary words in straight quotes, naming the obvious. */
+  .quoted::before,
+  .quoted::after {
+    content: "\0022";
+  }
+
+  /* Label plate: square-cut, ink border, a screw in each corner. */
+  .plate {
+    --screw: var(--ink);
+    position: relative;
+    border: 2px solid var(--ink);
+    border-radius: var(--radius);
+    background-image:
+      radial-gradient(circle, var(--screw) 2.5px, transparent 3px),
+      radial-gradient(circle, var(--screw) 2.5px, transparent 3px),
+      radial-gradient(circle, var(--screw) 2.5px, transparent 3px),
+      radial-gradient(circle, var(--screw) 2.5px, transparent 3px);
+    background-repeat: no-repeat;
+    background-size: 14px 14px;
+    background-position:
+      left 3px top 3px,
+      right 3px top 3px,
+      left 3px bottom 3px,
+      right 3px bottom 3px;
+  }
+
+  .hazard {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--ink) 0 18px,
+      var(--cotton) 18px 36px
+    );
+  }
+
+  /* Disabled and locked rows: the stripe, light enough to read through. */
+  .hazard-soft {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--label) 0 14px,
+      var(--cotton) 14px 28px
+    );
+  }
+
+  .hazard-on-safety {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--ink) 0 22px,
+      var(--safety) 22px 44px
+    );
+  }
+
+  /* Black nylon: a faint diagonal twill weave. */
+  .ripstop {
+    background-color: var(--nylon);
+    background-image: repeating-linear-gradient(
+      60deg,
+      rgb(255 255 255 / 0.09) 0 1px,
+      transparent 1px 4px
+    );
+  }
+
+  .barcode {
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--ink) 0 2px,
+      transparent 2px 3px,
+      var(--ink) 3px 4px,
+      transparent 4px 6px,
+      var(--ink) 6px 9px,
+      transparent 9px 10px,
+      var(--ink) 10px 11px,
+      transparent 11px 13px
+    );
+  }
+
+  /* The motion grammar: a tag swings once, then hangs still. */
+  .swing {
+    transform-origin: var(--hang-x, 50%) var(--hang-y, 12px);
+    animation: tag-swing 1.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes tag-swing {
+  0% {
+    rotate: var(--swing-from, 18deg);
+  }
+  30% {
+    rotate: calc(var(--swing-rest, 0deg) - 9deg);
+  }
+  55% {
+    rotate: calc(var(--swing-rest, 0deg) + 4deg);
+  }
+  78% {
+    rotate: calc(var(--swing-rest, 0deg) - 1.5deg);
+  }
+  100% {
+    rotate: var(--swing-rest, 0deg);
+  }
+}
+
+.tag-fall {
+  animation: tag-fall 2.4s cubic-bezier(0.3, 0.6, 0.4, 1) var(--fall-delay, 0s) both;
+}
+
+.box-rise {
+  animation: box-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1.9s both;
+}
+
+@keyframes tag-fall {
+  from {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(105vh) rotate(var(--fall-spin, 180deg));
+    opacity: 0.9;
+  }
+}
+
+@keyframes box-rise {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

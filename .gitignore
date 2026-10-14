@@ -12,4 +12,7 @@ dist/
 .output/
 .vercel
 .claude/worktrees/
+.next/
+*.tsbuildinfo
+.impeccable/
 .hyperframes/
