@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { defineChannel, POST } from "eve/channels";
 import { db, schema } from "../lib/db";
+import { getDemoWorkspace } from "../lib/workspace";
 
 // Sentry Internal Integration webhook → start a headless triage session.
 // Sentry signs each request with HMAC-SHA256(client secret, body) in `sentry-hook-signature`.
@@ -76,9 +77,11 @@ export default defineChannel({
       const incidentKey = issue.shortId ?? issue.id;
 
       // Atomic claim on the unique sentry_issue_id: Sentry retries and duplicate alerts start nothing.
+      // This integration is the demo shop's Sentry, so its incidents belong to the demo workspace.
+      const { id: workspaceId } = await getDemoWorkspace();
       const claimed = await db
         .insert(schema.incidents)
-        .values({ sentryIssueId: incidentKey, title: issue.title, status: "investigating" })
+        .values({ sentryIssueId: incidentKey, title: issue.title, status: "investigating", workspaceId })
         .onConflictDoNothing({ target: schema.incidents.sentryIssueId })
         .returning({ id: schema.incidents.id });
       if (claimed.length === 0) return new Response("already triaged", { status: 200 });

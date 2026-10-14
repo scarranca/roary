@@ -76,7 +76,7 @@ Roary's records (incidents, launches, videos) live in **Neon Postgres** and are 
 | Neon project | `young-surf-15904408` |
 | Main branch | `production` (the real data; Roary on Vercel uses it) |
 | Client | `agent/lib/db.ts` → exports `db` and `schema` |
-| Tables | `agent/lib/schema.ts` (`incidents`, `launches`) |
+| Tables | `agent/lib/schema.ts` (`incidents`, `launches`, `roary_profiles`, `workspaces`, `workspace_members`, `connections`; workspace helpers in `agent/lib/workspace.ts`) |
 | Migrations | `drizzle/` (generated, committed) |
 | Env vars | `DATABASE_URL` (pooled, app), `DATABASE_URL_UNPOOLED` (direct, migrations) |
 

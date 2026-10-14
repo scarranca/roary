@@ -171,7 +171,10 @@ vercel deploy            # preview: use this to test webhooks / @mentions
 | `VERCEL_OIDC_TOKEN` | AI Gateway + Vercel Connect | `vercel env pull` |
 | `DATABASE_URL` | App queries (pooled Neon connection) | `neon env pull` |
 | `DATABASE_URL_UNPOOLED` | Migrations (direct connection) | `neon env pull` |
-| `POSTHOG_API_KEY` | PostHog MCP (app-level personal API key) | PostHog → Settings → Personal API keys |
+| `POSTHOG_API_KEY` | PostHog MCP for the **demo workspace only** (app-level personal API key) | PostHog → Settings → Personal API keys |
+| `SENTRY_AUTH_TOKEN` | Sentry API for the **demo workspace only** (signed-in workspaces use their own encrypted token) | Sentry → internal integration token |
+| `NEON_AUTH_BASE_URL` | Sign-in, and verifying Neon Auth JWTs in the eve channel (JWKS at `<base>/.well-known/jwks.json`) | `neon env pull` |
+| `CONNECTIONS_ENCRYPTION_KEY` | AES-256-GCM key for `connections.secret_ciphertext` (32 random bytes, base64: `openssl rand -base64 32`) | Generate once per environment |
 | `BLOB_READ_WRITE_TOKEN` | Uploading rendered launch videos | Added when you connect a Vercel Blob store |
 | `HEYGEN_API_KEY` | *Optional.* HyperFrames cloud render (local render needs no key) | HeyGen dashboard |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | `eve remote` against protected deployments | Vercel project settings |

@@ -9,6 +9,7 @@ import {
   uploadLaunchVideo,
   type LaunchVideoContent,
 } from "../agent/lib/launch-video";
+import { getDemoWorkspace } from "../agent/lib/workspace";
 
 const templateDir = join(import.meta.dirname, "../agent/sandbox/workspace/video");
 const [contentPath = join(templateDir, "content.json"), repo = "scarranca/roary", pr = "31"] = process.argv.slice(2);
@@ -23,6 +24,7 @@ const { mp4, renderMs, fromSnapshot } = await renderLaunchVideo(files, content);
 console.log({ bytes: mp4.length, renderMs, fromSnapshot });
 
 const videoUrl = await uploadLaunchVideo(repo, Number(pr), mp4);
-const row = await saveLaunchVideo({ repo, prNumber: Number(pr), title: content.title, videoUrl });
+const { id: workspaceId } = await getDemoWorkspace();
+const row = await saveLaunchVideo({ repo, prNumber: Number(pr), title: content.title, videoUrl, workspaceId });
 console.log({ videoUrl, launchId: row?.id });
 process.exit(0);

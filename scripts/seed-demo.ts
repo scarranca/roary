@@ -12,6 +12,7 @@
 // don't run this while someone is testing triage against it.
 import { and, eq, like } from "drizzle-orm";
 import { db, schema } from "../agent/lib/db";
+import { getDemoWorkspace } from "../agent/lib/workspace";
 
 const SEED_DEPLOY_PREFIX = "https://seed.roary.demo/";
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000);
@@ -72,7 +73,10 @@ const launches: (typeof schema.launches.$inferInsert)[] = [
 ];
 
 async function seed() {
-  for (const row of incidents) {
+  // Seeded history belongs to the demo workspace (what guests see on the desk).
+  const { id: workspaceId } = await getDemoWorkspace();
+  for (const base of incidents) {
+    const row = { ...base, workspaceId };
     await db
       .insert(schema.incidents)
       .values(row)
@@ -86,7 +90,7 @@ async function seed() {
       .where(and(eq(schema.launches.deploymentUrl, row.deploymentUrl!), eq(schema.launches.prNumber, row.prNumber)))
       .limit(1);
     if (existing.length === 0) {
-      await db.insert(schema.launches).values(row);
+      await db.insert(schema.launches).values({ ...row, workspaceId });
       added++;
     }
   }

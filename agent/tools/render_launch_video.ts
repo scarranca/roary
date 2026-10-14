@@ -7,6 +7,7 @@ import {
   saveLaunchVideo,
   uploadLaunchVideo,
 } from "../lib/launch-video";
+import { workspaceForTurn } from "../lib/workspace-context";
 
 const line = (max: number, what: string) => z.string().min(1).max(max).describe(what);
 
@@ -60,7 +61,14 @@ export default defineTool({
       },
     );
     const videoUrl = await uploadLaunchVideo(input.repo, input.prNumber, mp4);
-    const launch = await saveLaunchVideo({ repo: input.repo, prNumber: input.prNumber, title: input.title, videoUrl });
+    const { workspace: team } = await workspaceForTurn(ctx);
+    const launch = await saveLaunchVideo({
+      repo: input.repo,
+      prNumber: input.prNumber,
+      title: input.title,
+      videoUrl,
+      workspaceId: team.id,
+    });
     return toJson({ videoUrl, launchId: launch?.id ?? null, renderSeconds: Math.round(renderMs / 1000), fromSnapshot });
   },
 });
