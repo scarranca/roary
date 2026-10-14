@@ -2,12 +2,19 @@
 
 import { RoundedBox, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { Character, Headwear, RoaryLook } from "@/lib/roary-character";
 
+const BLANK_VINYL = "#c9ced6";
+// While a picture is being read, every part turns into unpainted grey vinyl.
+const Blank = createContext(false);
+
 // Satin vinyl, like a designer toy: a little clearcoat over a matte base.
-function Vinyl({ color, emissive }: { readonly color: string; readonly emissive?: boolean }) {
+function Vinyl({ color: paint, emissive: glow }: { readonly color: string; readonly emissive?: boolean }) {
+  const blank = useContext(Blank);
+  const color = blank ? BLANK_VINYL : paint;
+  const emissive = glow && !blank;
   return (
     <meshPhysicalMaterial
       clearcoat={0.45}
@@ -564,10 +571,13 @@ export function RoaryFigure({
   gear,
   energy = 0.5,
   reducedMotion = false,
+  molding = false,
 }: {
   readonly look: RoaryLook;
   readonly cue?: FigureCue;
   readonly gear?: Gear;
+  /** Squashed into a blank grey blob of vinyl, held until molding ends. */
+  readonly molding?: boolean;
   /** Holds still: no bounce, no cursor tracking, no spin; reactions become a small pop. */
   readonly reducedMotion?: boolean;
   /** 0 = calm senior, 1 = hype buddy. Scales the idle motion. */
@@ -582,6 +592,7 @@ export function RoaryFigure({
   const pop = useRef(0);
   const roar = useRef(0);
   const squash = useRef(0);
+  const mold = useRef(0);
   const nextBlink = useRef(2);
   const { character, outfit, outfitColor, accentColor, headwear, logo } = look;
   const sleeves = outfit === "tee" ? character.body.color : outfitColor;
@@ -596,6 +607,15 @@ export function RoaryFigure({
     else if (cue.kind === "poke") squash.current = 1;
     else pop.current = 1;
   }, [cue]);
+  // Coming out of the mold: spring back to shape with a short roar.
+  const wasMolding = useRef(molding);
+  useEffect(() => {
+    if (wasMolding.current && !molding) {
+      pop.current = 1;
+      if (!reducedMotion) roar.current = 0.6;
+    }
+    wasMolding.current = molding;
+  }, [molding]);
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
@@ -612,8 +632,14 @@ export function RoaryFigure({
 
     root.current.position.y = Math.abs(Math.sin(t * (1.2 + energy * 1.6))) * bounce + popCurve * 0.25;
     root.current.rotation.y = pop.current * Math.PI * 2 * pop.current * motion;
+    mold.current = reducedMotion ? Number(molding) : THREE.MathUtils.damp(mold.current, Number(molding), 6, delta);
     const sq = squash.current * 0.18;
-    root.current.scale.set(1 + sq, 1 - sq + roarCurve * 0.08, 1 + sq);
+    const flat = 1 + mold.current * 0.15;
+    root.current.scale.set(
+      (1 + sq) * flat,
+      (1 - sq + roarCurve * 0.08) * (1 - mold.current * 0.75),
+      (1 + sq) * flat,
+    );
     body.current.scale.y = 1 + Math.sin(t * 2) * 0.015 * motion;
 
     const lookX = state.pointer.x * 0.55 * motion;
@@ -643,52 +669,54 @@ export function RoaryFigure({
       }}
       ref={root}
     >
-      <group ref={body}>
-        {/* Legs and sneakers */}
-        {[-1, 1].map((side) => (
-          <group key={side} position={[side * 0.24, 0, 0]}>
-            <Capsule color={character.body.color} length={0.22} position={[0, 0.34, 0]} radius={0.17} />
-            <RoundedBox args={[0.36, 0.2, 0.52]} castShadow position={[0, 0.11, 0.06]} radius={0.09} smoothness={4}>
-              <Vinyl color="#f4f4f2" />
-            </RoundedBox>
-            <mesh position={[0, 0.025, 0.06]}>
-              <boxGeometry args={[0.37, 0.05, 0.53]} />
-              <Vinyl color={accentColor} />
-            </mesh>
+      <Blank.Provider value={molding}>
+        <group ref={body}>
+          {/* Legs and sneakers */}
+          {[-1, 1].map((side) => (
+            <group key={side} position={[side * 0.24, 0, 0]}>
+              <Capsule color={character.body.color} length={0.22} position={[0, 0.34, 0]} radius={0.17} />
+              <RoundedBox args={[0.36, 0.2, 0.52]} castShadow position={[0, 0.11, 0.06]} radius={0.09} smoothness={4}>
+                <Vinyl color="#f4f4f2" />
+              </RoundedBox>
+              <mesh position={[0, 0.025, 0.06]}>
+                <boxGeometry args={[0.37, 0.05, 0.53]} />
+                <Vinyl color={accentColor} />
+              </mesh>
+            </group>
+          ))}
+  
+          <group position={[0, 0.98, 0]}>
+            <Torso look={look} />
           </group>
-        ))}
-
-        <group position={[0, 0.98, 0]}>
-          <Torso look={look} />
+  
+          {/* Arms */}
+          {[-1, 1].map((side) => (
+            <group key={side} position={[side * 0.66, 1.08, 0]} rotation={[0, 0, side * 0.32]}>
+              <Capsule color={sleeves} length={0.42} position={[0, -0.16, 0]} radius={0.15} />
+              <Ball color={character.body.color} position={[0, -0.47, 0]} radius={0.15} />
+              {side === 1 && gear ? (
+                <group position={[0, -0.5, 0.05]} rotation={[0, 0, -0.32]}>
+                  <GearPiece accent={accentColor} gear={gear} />
+                </group>
+              ) : null}
+            </group>
+          ))}
+  
+          <Tail character={character} tailRef={tail} />
         </group>
-
-        {/* Arms */}
-        {[-1, 1].map((side) => (
-          <group key={side} position={[side * 0.66, 1.08, 0]} rotation={[0, 0, side * 0.32]}>
-            <Capsule color={sleeves} length={0.42} position={[0, -0.16, 0]} radius={0.15} />
-            <Ball color={character.body.color} position={[0, -0.47, 0]} radius={0.15} />
-            {side === 1 && gear ? (
-              <group position={[0, -0.5, 0.05]} rotation={[0, 0, -0.32]}>
-                <GearPiece accent={accentColor} gear={gear} />
-              </group>
-            ) : null}
-          </group>
-        ))}
-
-        <Tail character={character} tailRef={tail} />
-      </group>
-
-      <group position={[0, 2.02, 0]} ref={head}>
-        <Head
-          accent={accentColor}
-          blinkRef={blink}
-          character={character}
-          headwear={headwear}
-          logo={logo}
-          logoPatch={look.logoPatch}
-          mouthRef={mouth}
-        />
-      </group>
+  
+        <group position={[0, 2.02, 0]} ref={head}>
+          <Head
+            accent={accentColor}
+            blinkRef={blink}
+            character={character}
+            headwear={headwear}
+            logo={logo}
+            logoPatch={look.logoPatch}
+            mouthRef={mouth}
+          />
+        </group>
+      </Blank.Provider>
     </group>
   );
 }

@@ -294,10 +294,69 @@ h3 {
   }
 }
 
+/* Photo to vinyl: a scan bar sweeps the picture while Claude reads it. */
+.scanline {
+  position: absolute;
+  inset-inline: 0;
+  height: 35%;
+  background: linear-gradient(to bottom, transparent, rgb(255 90 0 / 0.35) 80%, var(--safety) 96%, transparent);
+  animation: scan 1.5s linear infinite;
+}
+
+/* The spec readout types in line by line, then the whole plate fades away. */
+.type-line {
+  animation: type-in 0.24s steps(8, end) var(--line-delay, 0s) both;
+}
+
+.readout-out {
+  animation: readout-out 0.6s ease-in 4.4s forwards;
+}
+
+@keyframes scan {
+  from {
+    top: -35%;
+  }
+  to {
+    top: 100%;
+  }
+}
+
+@keyframes type-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes readout-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline {
+    animation: none;
+    top: 0;
+    height: 100%;
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .feed-flash {
     animation: none;
     background-color: var(--safety-soft);
+  }
+
+  .scanline {
+    animation: none;
+    top: 0;
+    height: 100%;
+    opacity: 0.35;
   }
 
   *,

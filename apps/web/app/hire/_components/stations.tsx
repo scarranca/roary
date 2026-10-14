@@ -109,7 +109,16 @@ async function shrinkForUpload(dataUrl: string) {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Character) => void }) {
+/** A picture on its way to becoming a toy, shown on the stage while Claude reads it. */
+export type PictureStudy = { status: "working" | "error" | "done"; preview: string; character?: Character };
+
+function PictureToToy({
+  onCharacter,
+  onStudy,
+}: {
+  readonly onCharacter: (character: Character) => void;
+  readonly onStudy?: (study: PictureStudy) => void;
+}) {
   const inputId = useId();
   const [state, setState] = useState<{ status: "idle" | "working" | "error"; preview?: string; error?: string }>({
     status: "idle",
@@ -119,6 +128,7 @@ function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Chara
     if (!file) return;
     const original = await readAsDataUrl(file);
     setState({ status: "working", preview: original });
+    onStudy?.({ status: "working", preview: original });
     try {
       const image = await shrinkForUpload(original);
       const response = await fetch("/api/character", {
@@ -132,9 +142,11 @@ function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Chara
         throw new Error(body.error ?? `Roary couldn't read that picture (error ${response.status}). Try a smaller one.`);
       }
       onCharacter(body.character);
+      onStudy?.({ status: "done", preview: original, character: body.character });
       setState({ status: "idle", preview: original });
     } catch (error) {
       setState({ status: "error", preview: original, error: error instanceof Error ? error.message : String(error) });
+      onStudy?.({ status: "error", preview: original });
     }
   };
 
@@ -192,6 +204,7 @@ export function PickStation({
   onName,
   onPreset,
   onCharacter,
+  onStudy,
 }: {
   readonly look: RoaryLook;
   readonly name: string;
@@ -199,6 +212,7 @@ export function PickStation({
   readonly onName: (name: string) => void;
   readonly onPreset: (id: string) => void;
   readonly onCharacter: (character: Character) => void;
+  readonly onStudy?: (study: PictureStudy) => void;
 }) {
   const nameId = useId();
   return (
@@ -230,7 +244,7 @@ export function PickStation({
         </div>
       </Field>
       <Field label={`Or any character · now: ${look.character.species}`}>
-        <PictureToToy onCharacter={onCharacter} />
+        <PictureToToy onCharacter={onCharacter} onStudy={onStudy} />
       </Field>
       <div className="flex flex-col gap-2.5">
         <label className="font-mono text-muted-foreground text-xs uppercase" htmlFor={nameId}>

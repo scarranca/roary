@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { energyFrom, JOB_LIST, JobsStation, OfferStation, PersonalityStation, sampleMessage } from "./hire-stations";
 import type { FigureCue, Gear } from "./roary-figure";
-import { FitStation, PickStation } from "./stations";
+import { FitStation, PickStation, type PictureStudy } from "./stations";
 
 // WebGL only runs in the browser; the stage shows a still until it loads.
 const RoaryStage = dynamic(() => import("./roary-stage"), {
@@ -52,6 +52,7 @@ export function FittingRoom() {
   const [cue, setCue] = useState<FigureCue>();
   const [signedAt, setSignedAt] = useState<number>();
   const [spin, setSpin] = useState(0);
+  const [study, setStudy] = useState<PictureStudy & { at: number }>();
   const [reducedMotion, setReducedMotion] = useState(false);
   const stageRef = useRef<HTMLElement>(null);
   const snapshotRef = useRef<(() => string | undefined) | null>(null);
@@ -133,6 +134,7 @@ export function FittingRoom() {
             energy={energyFrom(personality)}
             gear={station >= 3 ? gear : undefined}
             look={look}
+            molding={study?.status === "working"}
             reducedMotion={reducedMotion}
             snapshotRef={snapshotRef}
             spin={spin}
@@ -153,6 +155,8 @@ export function FittingRoom() {
             <span className="mt-1.5 block font-mono text-[10px] text-muted-foreground uppercase">Example message</span>
           </p>
         ) : null}
+
+        {study && station === 0 ? <PictureStudyOverlay key={study.at} study={study} /> : null}
 
         {signedAt ? <SigningMoment key={signedAt} name={displayName} species={look.character.species} /> : null}
 
@@ -203,6 +207,10 @@ export function FittingRoom() {
               }}
               onName={setName}
               onPreset={pickPreset}
+              onStudy={(next) => {
+                setStudy({ ...next, at: Date.now() });
+                showStage();
+              }}
               presetId={presetId}
             />
           ) : null}
@@ -289,6 +297,80 @@ function SigningMoment({ name, species }: { readonly name: string; readonly spec
         </div>
         <div className="flex-1" />
         <div className="hazard-on-safety h-4" />
+      </div>
+    </div>
+  );
+}
+
+/** The picture Claude is reading, hung on the stage by a zip tag, then the parts it chose. */
+function PictureStudyOverlay({ study }: { readonly study: PictureStudy }) {
+  const { status, preview, character } = study;
+  if (status === "done" && character) {
+    const spec = [
+      ["Species", character.species],
+      ["Head", character.head.shape],
+      ["Ears", character.ears.kind],
+      ["Mane", character.mane.kind],
+      ["Muzzle", character.muzzle.kind],
+      ["Eyes", character.eyes.kind],
+      ["Tail", character.tail.kind],
+      ["Fur", character.head.color],
+    ];
+    return (
+      <div
+        aria-live="polite"
+        className="readout-out plate pointer-events-none absolute top-4 right-4 flex w-56 flex-col gap-1 bg-cotton px-5 py-4 font-mono text-ink text-xs uppercase shadow-[0_14px_28px_-14px_rgb(0_0_0/0.8)]"
+      >
+        <span className="mb-1 text-[10px] text-muted-foreground">Spec · read from your picture</span>
+        {spec.map(([label, value], i) => (
+          <span
+            className="type-line flex items-center gap-2"
+            key={label}
+            style={{ "--line-delay": `${i * 120}ms` } as CSSProperties}
+          >
+            <span className="w-16 text-muted-foreground">{label}:</span>
+            {label === "Fur" ? (
+              <span aria-hidden className="size-3 rounded-[2px] border-[1.5px] border-ink" style={{ background: value }} />
+            ) : null}
+            {value}
+          </span>
+        ))}
+        <span
+          className="type-line mt-2 self-start bg-safety py-1 pr-2 pl-3 [clip-path:polygon(7px_0,100%_0,100%_100%,7px_100%,0_50%)]"
+          style={{ "--line-delay": `${spec.length * 120}ms` } as CSSProperties}
+        >
+          New character · 1 of 1
+        </span>
+      </div>
+    );
+  }
+  const failed = status === "error";
+  return (
+    <div className={cn("pointer-events-none absolute top-0 right-6", failed && "readout-out")}>
+      <div
+        className="swing flex flex-col items-center"
+        style={{ "--swing-rest": "-4deg", "--hang-y": "0px" } as CSSProperties}
+      >
+        <span aria-hidden className="h-8 w-1.5 bg-safety" />
+        <span aria-hidden className="-mt-1 h-5 w-9 bg-safety [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)]" />
+        <figure className="-mt-2 flex flex-col gap-2 rounded-[2px] border-2 border-ink bg-cotton p-2 pb-3 shadow-[0_14px_28px_-14px_rgb(0_0_0/0.8)]">
+          <div className="relative size-32 overflow-hidden border-2 border-ink sm:size-40">
+            {/* biome-ignore lint/performance/noImgElement: local data URL preview */}
+            <img alt="Your upload" className={cn("size-full object-cover", failed && "grayscale")} src={preview} />
+            {failed ? (
+              <span className="hazard absolute inset-x-0 top-1/2 grid -translate-y-1/2 place-items-center py-2">
+                <span className="border-2 border-ink bg-cotton px-2 py-0.5 font-mono text-ink text-xs uppercase">
+                  Couldn't read it
+                </span>
+              </span>
+            ) : (
+              <span aria-hidden className="scanline" />
+            )}
+          </div>
+          <figcaption aria-live="polite" className="max-w-32 font-mono text-[10px] text-ink uppercase leading-tight sm:max-w-40">
+            {failed ? "Try a clearer picture" : "Claude is studying your picture…"}
+          </figcaption>
+        </figure>
       </div>
     </div>
   );
