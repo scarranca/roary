@@ -10,3 +10,8 @@ attachDatabasePool(pool);
 
 export const db = drizzle(pool, { schema });
 export { schema };
+
+// eve tool results must be plain JSON; Drizzle returns Date objects for timestamps.
+export function toJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}

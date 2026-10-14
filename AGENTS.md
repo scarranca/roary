@@ -134,7 +134,7 @@ The model never writes SQL. It calls typed tools that use `db`. Copy `agent/tool
 // agent/tools/save_launch.ts
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { db, schema } from "../lib/db";
+import { db, schema, toJson } from "../lib/db";
 
 export default defineTool({
   description: "Record a shipped feature (merged PR) so launch reviews and videos can reference it.",
@@ -145,13 +145,14 @@ export default defineTool({
   }),
   async execute(input) {
     const [row] = await db.insert(schema.launches).values(input).returning();
-    return row; // return small, JSON-friendly objects; the model reads them
+    return toJson(row); // plain JSON only (Dates break eve); keep it small, the model reads it
   },
 });
 ```
 
 Rules for DB tools:
 - Validate every input with zod. Never interpolate model input into raw SQL. If you need raw SQL, use Drizzle's `sql` template (it parameterizes).
+- Return plain JSON: wrap DB results in `toJson()` from `agent/lib/db.ts`. Drizzle returns `Date` objects and eve rejects non-JSON tool results (`ToolOutputSerializationError`).
 - Bound reads (`.limit()`, max 50) so tool output stays small.
 - Make writes idempotent (upsert on a natural key) because eve steps can retry.
 - No `DELETE` / `TRUNCATE` tools for Roary. If one is ever needed, it goes behind `approval: always()`.
