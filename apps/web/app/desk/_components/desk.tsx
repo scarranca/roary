@@ -8,13 +8,13 @@ export function Desk({ sessionId }: { readonly sessionId?: string }) {
     <div className="flex min-h-dvh flex-col lg:h-dvh">
       <SiteHeader />
       <main className="mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 py-8 sm:px-6 lg:min-h-0 lg:grid-cols-[1fr_1.15fr]">
-        <section aria-labelledby="feed-title" className="flex min-w-0 flex-col gap-6 lg:overflow-y-auto">
+        <section aria-labelledby="feed-title" className="order-2 flex min-w-0 flex-col gap-6 lg:order-none lg:overflow-y-auto">
           <DeskTitle />
           <ActivityFeed />
         </section>
         <section
           aria-label="Chat with Roary"
-          className="h-[75dvh] min-w-0 overflow-hidden rounded-[3px] border-2 border-ink lg:h-auto"
+          className="order-1 h-[70dvh] min-h-[26rem] min-w-0 lg:order-none lg:min-h-0 overflow-hidden rounded-[3px] border-2 border-ink lg:h-auto"
         >
           <AgentChat sessionId={sessionId} />
         </section>

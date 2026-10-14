@@ -21,6 +21,18 @@ export const JOB_LIST: { key: keyof Jobs; label: string; gear: Gear }[] = [
   { key: "launchVideo", label: "Make launch videos", gear: "clapper" },
 ];
 
+/** Names the voice: the closest preset when the sliders sit near one, otherwise three words from the sliders. */
+export function voiceLabel(p: Personality) {
+  const keys = ["playful", "detailed", "proactive", "emoji"] as const;
+  const distance = (q: Personality) => Math.sqrt(keys.reduce((sum, k) => sum + (p[k] - q[k]) ** 2, 0));
+  const closest = PRESETS.map((preset) => ({ preset, d: distance(preset.value) })).sort((a, b) => a.d - b.d)[0];
+  if (closest && closest.d < 30) return closest.preset.label;
+  const tone = p.playful > 66 ? "Playful" : p.playful < 34 ? "Professional" : "Friendly";
+  const length = p.detailed > 66 ? "detailed" : p.detailed < 34 ? "concise" : "to the point";
+  const initiative = p.proactive > 66 ? "proactive" : p.proactive < 34 ? "quiet" : "steady";
+  return `${tone}, ${length}, ${initiative}`;
+}
+
 /** 0 is a still, quiet figure; 1 bounces. */
 export function energyFrom(p: Personality) {
   return (p.playful * 0.7 + p.proactive * 0.3) / 100;
@@ -191,8 +203,13 @@ export function OfferStation({
   summary,
   signed,
   onSign,
+  logo,
+  logoPatch,
 }: {
   readonly name: string;
+  /** The team's logo (PNG data URL) and its patch color, shown on the letterhead. */
+  readonly logo?: string;
+  readonly logoPatch?: string;
   readonly summary: { label: string; value: string }[];
   readonly signed: boolean;
   readonly onSign: () => void;
@@ -246,7 +263,15 @@ export function OfferStation({
     <div className="flex flex-col gap-6">
       <div className="plate relative flex flex-col gap-4 bg-card p-5">
         <div className="flex items-center justify-between gap-3 border-ink border-b-2 pb-3 font-mono text-xs uppercase">
-          <span>Offer of employment · Roary-01</span>
+          <span className="flex items-center gap-3">
+            {logo ? (
+              <span className="plate grid size-12 shrink-0 place-items-center p-1" style={{ background: logoPatch ?? "#ffffff" }}>
+                {/* biome-ignore lint/performance/noImgElement: local data URL */}
+                <img alt="Your team's logo" className="max-h-full max-w-full object-contain" src={logo} />
+              </span>
+            ) : null}
+            Offer of employment · Roary-01
+          </span>
           <span aria-hidden className="barcode block h-4 w-20" />
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 font-mono text-sm uppercase">

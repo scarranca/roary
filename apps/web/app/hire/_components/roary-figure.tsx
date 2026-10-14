@@ -272,23 +272,26 @@ function Mane({ character }: { readonly character: Character }) {
     return Array.from({ length: count }, (_, i) => {
       const angle = (i / count) * Math.PI * 2;
       // Lion manes run longer at the cheeks and chin than over the crown.
-      const reach = kind === "lion" ? ring + 0.08 * Math.max(0, -Math.sin(angle)) : ring;
-      return { angle, x: Math.cos(angle) * reach, y: Math.sin(angle) * reach };
+      const below = Math.max(0, -Math.sin(angle));
+      const reach = kind === "lion" ? ring + 0.08 * below : ring;
+      // Tufts under the jaw tuck forward and shrink so they stay in front of the
+      // back plane of the torso and never cover the back print.
+      return { angle, x: Math.cos(angle) * reach, y: Math.sin(angle) * reach, z: 0.26 * below, s: 1 - 0.2 * below };
     });
   }, [kind]);
 
   if (kind === "none") return null;
   return (
     <group position={[0, 0, -0.18]}>
-      <Ball color={color} position={[0, 0, -0.05]} radius={0.82} scale={[1, 1, 0.6]} />
-      {tufts.map(({ angle, x, y }) =>
+      <Ball color={color} position={[0, 0.06, -0.05]} radius={0.82} scale={[1, 0.9, 0.6]} />
+      {tufts.map(({ angle, x, y, z, s }) =>
         kind === "spiky" ? (
-          <mesh castShadow key={angle} position={[x, y, 0]} rotation={[0, 0, angle - Math.PI / 2]}>
+          <mesh castShadow key={angle} position={[x, y, z]} rotation={[0, 0, angle - Math.PI / 2]} scale={s}>
             <coneGeometry args={[0.16, 0.55, 12]} />
             <Vinyl color={color} />
           </mesh>
         ) : (
-          <Ball color={color} key={angle} position={[x, y, 0]} radius={kind === "fluffy" ? 0.23 : 0.3} />
+          <Ball color={color} key={angle} position={[x, y, z]} radius={(kind === "fluffy" ? 0.23 : 0.3) * s} />
         ),
       )}
     </group>
@@ -417,9 +420,9 @@ function Torso({ look }: { readonly look: RoaryLook }) {
           <LogoPatch patch={logoPatch} position={[0, 0.02, 0.385]} size={[0.32, 0.32]} url={logo} />
           <LogoPatch
             patch={logoPatch}
-            position={[0, 0.02, -0.385]}
+            position={[0, -0.04, -0.385]}
             rotation={[0, Math.PI, 0]}
-            size={[0.46, 0.34]}
+            size={[0.46, 0.3]}
             url={logo}
           />
         </>
