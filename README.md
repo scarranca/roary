@@ -51,7 +51,7 @@ Roary closes that loop. You don't configure it like a dashboard. You **hire** it
                                                     launch-video.mp4 → Vercel Blob
 ```
 
-**Stack:** Vercel (hosting) · eve · AI Gateway · Vercel Connect (OAuth for GitHub/Sentry/PostHog) · Vercel Sandbox · Vercel Workflows · Vercel Cron (eve schedules) · Vercel Blob (videos) · HyperFrames (HeyGen) · TypeScript · Node 24.
+**Stack:** Vercel (hosting) · eve · AI Gateway · Vercel Connect (OAuth for GitHub/Sentry/PostHog) · Vercel Sandbox · Vercel Workflows · Vercel Cron (eve schedules) · Vercel Blob (videos) · Neon Postgres + Drizzle (state) · HyperFrames (HeyGen) · TypeScript · Node 24.
 
 ## Project layout (planned)
 
@@ -68,6 +68,8 @@ agent/
   tools/
     github.ts              # @github-tools/sdk: PRs, comments, reviews
     render_launch_video.ts # runs HyperFrames render in the sandbox, uploads to Blob
+    save_incident.ts       # upsert an incident in Neon  ✅
+    list_incidents.ts      # read incidents from Neon  ✅
   skills/
     triage-error.md        # error → diagnosis → fix playbook
     review-launch.md       # 24h launch health report playbook
@@ -76,7 +78,14 @@ agent/
     daily-launch-review.ts # cron: morning launch report
   memory/
     team.ts                # stable facts about the repo & team
+  lib/
+    db.ts                  # Neon Postgres (pg pool + Drizzle)  ✅
+    schema.ts              # incidents, launches  ✅
+  sandbox.ts               # Vercel Sandbox on Vercel, just-bash locally  ✅
   sandbox/workspace/       # files copied into /workspace (video templates, etc.)
+drizzle/                   # SQL migrations (drizzle-kit)
+neon.ts                    # Neon services config (neon deploy)
+scripts/db-smoke.ts        # end-to-end DB check
 evals/                     # eve evals for triage quality
 ```
 
@@ -92,6 +101,12 @@ npm install
 vercel link
 vercel env pull
 
+# 2b. Neon database (DATABASE_URL, DATABASE_URL_UNPOOLED → .env.local)
+npm i -g neon@latest && neon login
+neon env pull            # project is already linked via neon init
+npm run db:migrate       # apply drizzle/ migrations
+npx tsx --env-file=.env.local scripts/db-smoke.ts   # prove the DB works
+
 # 3. Connect the integrations (one time per project)
 vercel connect create sentry   && vercel connect attach <uid>
 vercel connect create posthog  && vercel connect attach <uid>
@@ -101,14 +116,14 @@ vercel connect attach github/roary --triggers --trigger-path /eve/v1/github
 # 4. Check that eve sees every tool/connection/skill
 npx eve info
 
-# 5. Run locally (terminal UI)
-npx eve dev
+# 5. Run locally (terminal UI; server on http://127.0.0.1:2000)
+npm run dev
 ```
 
 Run a schedule by hand (schedules don't fire on their own in local dev):
 
 ```bash
-curl -X POST http://localhost:<port>/eve/v1/dev/schedules/daily-launch-review
+curl -X POST http://127.0.0.1:2000/eve/v1/dev/schedules/daily-launch-review
 ```
 
 Deploy (Vercel):
@@ -132,6 +147,8 @@ vercel deploy            # preview: use this to test webhooks / @mentions
 | Var | Needed for | Source |
 |---|---|---|
 | `VERCEL_OIDC_TOKEN` | AI Gateway + Vercel Connect | `vercel env pull` |
+| `DATABASE_URL` | App queries (pooled Neon connection) | `neon env pull` |
+| `DATABASE_URL_UNPOOLED` | Migrations (direct connection) | `neon env pull` |
 | `BLOB_READ_WRITE_TOKEN` | Uploading rendered launch videos | Added when you connect a Vercel Blob store |
 | `HEYGEN_API_KEY` | *Optional.* HyperFrames cloud render (local render needs no key) | HeyGen dashboard |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | `eve remote` against protected deployments | Vercel project settings |

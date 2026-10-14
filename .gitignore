@@ -8,3 +8,5 @@ dist/
 *.mov
 *.webm
 .DS_Store
+.neon
+.output/
