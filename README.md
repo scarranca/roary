@@ -108,8 +108,11 @@ npm run db:migrate       # apply drizzle/ migrations
 npx tsx --env-file=.env.local scripts/db-smoke.ts   # prove the DB works
 
 # 3. Connect the integrations (one time per project)
-vercel connect create sentry   && vercel connect attach <uid>
-vercel connect create posthog  && vercel connect attach <uid>
+# Sentry + PostHog are already created in roary-hack (UIDs sentry/sentry, posthog/posthog).
+# From scratch: create, then attach the UID it prints (not the --name).
+vercel connect create sentry  --connection-method mcp --name sentry  --yes   # → sentry/sentry
+vercel connect create posthog --connection-method mcp --name posthog --yes   # → posthog/posthog
+vercel connect attach sentry/sentry --yes && vercel connect attach posthog/posthog --yes
 vercel connect create github --name github/roary
 vercel connect attach github/roary --triggers --trigger-path /eve/v1/github
 
