@@ -1,6 +1,7 @@
 "use client";
 
 import { UserIcon } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -73,6 +74,10 @@ export function AccountMenu() {
             ))}
           </ul>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="uppercase">
+          <Link href="/settings/connections">Connect your stack</Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <p className="truncate px-2 py-1 text-muted-foreground text-xs">{user.email}</p>
         <DropdownMenuItem className="uppercase" onSelect={() => void authClient.signOut()}>
