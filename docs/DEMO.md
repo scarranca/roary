@@ -127,7 +127,7 @@ Expected: a kind refusal plus an offer to check CI. This shows the guardrail liv
 ## 5. Known risks (watch these in the dry run)
 
 - **Merge gate.** Five open PRs (#29, #30, #31, #32, #33) and the triage PR stand between today's prod and the live path. Anything not merged by T-30 runs on its fallback only.
-- **Sentry in the public chat.** Sentry auth is a *user-scoped* Vercel Connect connector. An anonymous browser session (`none()` auth from #33) has no Vercel user, so the Sentry MCP may fail or ask for sign-in. For the triage beat, prefer `eve remote connect` (your Vercel user via OIDC) or confirm at T-10 that `/desk` can reach Sentry.
+- **Sentry in the public chat.** Fixed: Roary reads Sentry only through its app-level tools (`list_sentry_issues`, `get_sentry_issue`, `SENTRY_AUTH_TOKEN`), and the user-scoped Sentry MCP is gone, so the anonymous `/desk` chat never sees a sign-in link. At T-10, confirm `SENTRY_AUTH_TOKEN` and `POSTHOG_API_KEY` are set in Vercel prod.
 - **Deploy time.** The live break depends on a Vercel production build (about 45–90s, not timed yet). Time it in the dry run. If it's over 60s, merge the break PR at T-1 instead and say "this just went out."
 - **Fix PR time.** Not measured yet. A fix run makes several sequential GitHub calls (read files, branch, commit each file, open the PR), so it will probably overrun its 25s slot. Time it, and treat PR #1 as the expected fallback.
 - **Launch video.** No pre-rendered Blob URL exists yet, and the PR trigger is in #31. That leaves the screen recording as the only fallback until it exists.

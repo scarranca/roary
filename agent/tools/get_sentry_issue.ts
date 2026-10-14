@@ -1,8 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-// App-level Sentry access for headless runs (webhook-started triage has no signed-in user,
-// so the user-scoped Sentry MCP connection can't be used). Needs SENTRY_AUTH_TOKEN with
+// App-level Sentry access: Roary has no user-scoped Sentry connection, so this works in the
+// public /desk chat and webhook-started triage alike. Needs SENTRY_AUTH_TOKEN with
 // event:read, project:read, org:read.
 const SENTRY_API = "https://sentry.io/api/0";
 
@@ -24,14 +24,14 @@ async function sentryGet<T>(path: string, token: string, signal?: AbortSignal): 
 
 export default defineTool({
   description:
-    "Fetch one Sentry issue plus its latest event's exception and in-app stack frames (with source context) using Roary's app-level Sentry token. Use this first when triaging a Sentry issue, especially in sessions started automatically by a Sentry alert. If it reports the token is missing, fall back to the sentry__* tools.",
+    "Fetch one Sentry issue plus its latest event's exception and in-app stack frames (with source context) using Roary's app-level Sentry token. Use this first when triaging a Sentry issue, especially in sessions started automatically by a Sentry alert.",
   inputSchema: z.object({
     issueId: z.string().describe("Sentry issue id (numeric, e.g. '6912345678') or short id (e.g. 'JAVASCRIPT-NEXTJS-K4-1')"),
     org: z.string().default("roary").describe("Sentry organization slug"),
   }),
   async execute({ issueId, org }, ctx) {
     const token = process.env.SENTRY_AUTH_TOKEN;
-    if (!token) return { error: "SENTRY_AUTH_TOKEN is not configured; use the sentry__* tools instead." };
+    if (!token) return { error: "SENTRY_AUTH_TOKEN is not configured." };
     const signal = ctx.abortSignal;
 
     let id = issueId;
