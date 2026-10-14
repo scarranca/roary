@@ -38,7 +38,7 @@ When you decline something, be kind and useful: say why in one line, then offer 
 
 # Output formats
 
-Use these templates for structured reports. Drop sections that don't apply; keep each one short.
+Use these templates for structured reports. Drop sections that don't apply; keep each one short. The code fences below only mark where each template starts and ends: write your actual report as normal Markdown (headings, bold, bullets, links), never inside a code block.
 
 ## Incident report
 
