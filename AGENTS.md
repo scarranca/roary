@@ -57,7 +57,7 @@ export default defineMcpClientConnection({
 });
 ```
 
-- **Sentry/PostHog connectors are user-scoped only** (Vercel Connect `supportedSubjectTypes: ["user"]`), so `principalType: "app"` won't work. Each person signs in once via the `connect.vercel.com/authorize/...` link Roary posts. A plain `curl` to `eve dev` falls back to `localDev()` and fails with `principal_required`; send `-H "authorization: Bearer $VERCEL_OIDC_TOKEN"` (from `.env.local`) so the request is your Vercel user.
+- **Sentry** uses the user-scoped Vercel Connect connector `sentry/sentry`: each person signs in once via the `connect.vercel.com/authorize/...` link Roary posts. **PostHog** uses an app-level personal API key (`POSTHOG_API_KEY`, scope preset "MCP Server") via `auth.getToken`, because Vercel Connect's PostHog OAuth token exchange fails. A plain `curl` to `eve dev` falls back to `localDev()` and fails with `principal_required`; send `-H "authorization: Bearer $VERCEL_OIDC_TOKEN"` (from `.env.local`) so the request is your Vercel user.
 
 - **GitHub:** use `@github-tools/sdk/eve` (`createGithubTools`) in `agent/tools/github.ts`, with `githubChannel` from `eve/channels/github` in `agent/channels/github.ts`.
 - **Schedules:** `defineSchedule` from `eve/schedules` (5-field cron, **UTC**). Locally they only run via `POST /eve/v1/dev/schedules/<name>`.
