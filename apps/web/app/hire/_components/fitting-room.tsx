@@ -31,11 +31,11 @@ const RoaryStage = dynamic(() => import("./roary-stage"), {
 });
 
 const STATIONS = [
-  { short: "Pick", title: "Pick your Roary" },
-  { short: "Fit & swag", title: "Fit & swag" },
-  { short: "Personality", title: "Personality" },
-  { short: "Jobs", title: "Job description" },
-  { short: "Offer", title: "Offer letter" },
+  { short: "Pick", tiny: "Pick", title: "Pick your Roary" },
+  { short: "Fit & swag", tiny: "Fit", title: "Fit & swag" },
+  { short: "Personality", tiny: "Voice", title: "Personality" },
+  { short: "Jobs", tiny: "Jobs", title: "Job description" },
+  { short: "Offer", tiny: "Offer", title: "Offer letter" },
 ] as const;
 
 const OUTFIT_LABEL = { crew: "Crew jacket", hoodie: "Hoodie", tee: "Tee" } as const;
@@ -179,11 +179,11 @@ export function FittingRoom() {
         className="flex min-h-0 flex-col border-ink border-t-2 bg-background lg:border-t-0 lg:border-l-2"
       >
         <nav aria-label="Stations" className="flex overflow-x-auto border-ink border-b-2">
-          {STATIONS.map(({ short }, index) => (
+          {STATIONS.map(({ short, tiny }, index) => (
             <button
               aria-current={index === station ? "step" : undefined}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 border-ink border-r-2 px-3 py-3 font-mono text-xs uppercase last:border-r-0",
+                "flex min-w-0 flex-1 items-center justify-center gap-1 border-ink border-r-2 px-1.5 py-3 font-mono text-[11px] uppercase last:border-r-0 sm:flex-none sm:shrink-0 sm:justify-start sm:gap-1.5 sm:px-3 sm:text-xs",
                 index === station ? "bg-ink text-cotton" : index < station ? "bg-label" : "hover:bg-label",
               )}
               key={short}
@@ -191,7 +191,10 @@ export function FittingRoom() {
               type="button"
             >
               <span>{index + 1}</span>
-              {short}
+              <span aria-hidden="true" className="truncate sm:hidden">
+                {tiny}
+              </span>
+              <span className="sr-only sm:not-sr-only">{short}</span>
             </button>
           ))}
         </nav>
