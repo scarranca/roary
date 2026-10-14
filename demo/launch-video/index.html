@@ -1,0 +1,852 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"product","type":"string","label":"Product or repo","description":"Name of the product or owner/repo that shipped the feature.","default":"Roary Demo Shop"},
+    {"id":"title","type":"string","label":"Feature title","description":"Short name of the shipped feature; the last word gets the orange highlight.","default":"Free shipping on orders over $50"},
+    {"id":"tagline","type":"string","label":"Tagline","description":"One sentence on what the feature does for users.","default":"Orders over $50 now ship free, and shoppers see it right in the cart."},
+    {"id":"bullet1","type":"string","label":"Bullet 1","description":"First highlight, under 60 characters.","default":"Free shipping on every order over $50"},
+    {"id":"bullet2","type":"string","label":"Bullet 2","description":"Second highlight, under 60 characters.","default":"Shown live in the cart as you shop"},
+    {"id":"bullet3","type":"string","label":"Bullet 3","description":"Third highlight, under 60 characters.","default":"No code needed at checkout"},
+    {"id":"metricLabel","type":"string","label":"Metric label","description":"What the before/after numbers measure.","default":"Average cart value"},
+    {"id":"metricBefore","type":"string","label":"Metric before","description":"Value before the change.","default":"Avg cart $38"},
+    {"id":"metricAfter","type":"string","label":"Metric after","description":"Value after the change, or the goal.","default":"Goal $50+"},
+    {"id":"impact","type":"string","label":"Impact line","description":"One line on the user impact.","default":"Every cart now has a reason to reach $50"},
+    {"id":"authors","type":"string","label":"Authors","description":"Comma-separated GitHub handles of the people who shipped it.","default":"@martha, @santiago"},
+    {"id":"thanks","type":"string","label":"Thank-you line","description":"Closing thank-you; the last word gets the orange highlight.","default":"Thank you, team."},
+    {"id":"outro","type":"string","label":"Outro line","description":"Final call to action, printed on the orange plate.","default":"Hire your Roary"},
+    {"id":"prUrl","type":"string","label":"PR link","description":"Pull request or repo URL without https://.","default":"github.com/scarranca/roary"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      Roary's launch video in the apps/web brand: white cotton and black nylon, safety-orange
+      tags and plates, quoted condensed caps (Archivo 900 @ 62% width), Share Tech Mono labels,
+      hazard stripes, and the tag swing (one swing, then it hangs still).
+      Fonts and GSAP are vendored so renders never depend on the network.
+    -->
+    <script src="vendor/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Archivo";
+        src: url("vendor/archivo-latin-wdth-normal.woff2") format("woff2");
+        font-weight: 100 900;
+        font-stretch: 62% 125%;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Share Tech Mono";
+        src: url("vendor/share-tech-mono-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+      :root {
+        --cotton: #ffffff;
+        --label: #e6e6e6;
+        --ink: #0a0a0a;
+        --nylon: #1a1a1a;
+        --safety: #ff5a00;
+        --background: #f2f2f0;
+        --muted: #4d4d4b;
+        --radius: 3px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--background);
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Archivo", ui-sans-serif, system-ui, sans-serif;
+        color: var(--ink);
+        background: var(--background);
+        -webkit-font-smoothing: antialiased;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .scene {
+        overflow: hidden;
+      }
+      .scene .inner {
+        position: absolute;
+        inset: 0;
+        padding: 0 140px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .light {
+        background: var(--background);
+        color: var(--ink);
+      }
+      /* Black nylon: a faint diagonal twill weave. */
+      .ripstop {
+        background-color: var(--nylon);
+        background-image: repeating-linear-gradient(60deg, rgb(255 255 255 / 0.09) 0 1px, transparent 1px 4px);
+        color: var(--cotton);
+      }
+      .hazard {
+        background-image: repeating-linear-gradient(-45deg, var(--ink) 0 36px, var(--cotton) 36px 72px);
+      }
+      .hazard-on-safety {
+        background-image: repeating-linear-gradient(-45deg, var(--ink) 0 44px, var(--safety) 44px 88px);
+      }
+      /* Heavy condensed caps: the jacket-back lettering. */
+      .display {
+        font-weight: 900;
+        font-stretch: 62%;
+        text-transform: uppercase;
+        line-height: 0.88;
+        letter-spacing: -0.01em;
+      }
+      .quoted::before,
+      .quoted::after {
+        content: "\0022";
+      }
+      .mono {
+        font-family: "Share Tech Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+      }
+      .hl {
+        background: var(--safety);
+        color: var(--ink);
+        padding: 0 0.08em;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+      }
+      /* Label plate: square-cut, ink border, a screw in each corner. */
+      .plate {
+        position: relative;
+        border: 4px solid var(--ink);
+        border-radius: var(--radius);
+        background-color: var(--cotton);
+        color: var(--ink);
+        background-image:
+          radial-gradient(circle, var(--ink) 4.5px, transparent 5.5px),
+          radial-gradient(circle, var(--ink) 4.5px, transparent 5.5px),
+          radial-gradient(circle, var(--ink) 4.5px, transparent 5.5px),
+          radial-gradient(circle, var(--ink) 4.5px, transparent 5.5px);
+        background-repeat: no-repeat;
+        background-size: 24px 24px;
+        background-position:
+          left 5px top 5px,
+          right 5px top 5px,
+          left 5px bottom 5px,
+          right 5px bottom 5px;
+      }
+      .plate.safety {
+        background-color: var(--safety);
+      }
+      .barcode {
+        display: block;
+        background-image: repeating-linear-gradient(
+          90deg,
+          var(--ink) 0 4px,
+          transparent 4px 6px,
+          var(--ink) 6px 8px,
+          transparent 8px 12px,
+          var(--ink) 12px 18px,
+          transparent 18px 20px,
+          var(--ink) 20px 22px,
+          transparent 22px 26px
+        );
+      }
+      /* Safety-orange PVC zip tag, hung from the punched hole on its left edge. */
+      .zip-tag {
+        position: absolute;
+        display: inline-flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 16px 28px 16px 60px;
+        background: var(--safety);
+        color: var(--ink);
+        font-size: 26px;
+        line-height: 1.15;
+        transform-origin: 26px 50%;
+        clip-path: polygon(30px 0, 100% 0, 100% 100%, 30px 100%, 0 50%);
+        -webkit-mask: radial-gradient(circle at 28px 50%, transparent 9px, #000 10px);
+        mask: radial-gradient(circle at 28px 50%, transparent 9px, #000 10px);
+        filter: drop-shadow(0 12px 18px rgb(10 10 10 / 0.35));
+      }
+      .zip-tag .barcode {
+        margin-top: 4px;
+        width: 130px;
+        height: 22px;
+      }
+
+      /* Persistent chrome */
+      #progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 10px;
+        width: 1920px;
+        background: var(--safety);
+        transform-origin: left center;
+      }
+      #roary-mark {
+        position: absolute;
+        top: 48px;
+        left: 72px;
+        padding: 10px 26px 6px;
+        font-size: 54px;
+      }
+      #hdr-label {
+        position: absolute;
+        top: 64px;
+        right: 72px;
+        padding: 10px 18px;
+        background: var(--ink);
+        color: var(--cotton);
+        font-size: 28px;
+      }
+
+      /* 1. Intro */
+      .band {
+        position: absolute;
+        left: -120px;
+        width: 2160px;
+        height: 96px;
+      }
+      #band-top {
+        top: 0;
+      }
+      #band-bottom {
+        bottom: 0;
+      }
+      #intro-head {
+        font-size: 280px;
+      }
+      #intro-head .line {
+        display: block;
+      }
+      #intro-sub {
+        margin-top: 44px;
+        font-size: 40px;
+        color: var(--label);
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+      #intro-sub b {
+        font-weight: 400;
+        background: var(--safety);
+        color: var(--ink);
+        padding: 6px 14px;
+      }
+      #badge {
+        position: absolute;
+        top: 150px;
+        right: 110px;
+        width: 560px;
+        transform-origin: 50% -60px;
+      }
+      #badge .clip-tab {
+        display: block;
+        margin: 0 auto;
+        width: 84px;
+        height: 40px;
+        border: 4px solid var(--ink);
+        border-bottom: 0;
+        border-radius: var(--radius) var(--radius) 0 0;
+        background: var(--label);
+      }
+      #badge .plate {
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        box-shadow: 0 36px 60px -24px rgb(0 0 0 / 0.7);
+      }
+      #badge .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 26px;
+      }
+      #badge .row .barcode {
+        width: 170px;
+        height: 32px;
+      }
+      #badge .body {
+        display: flex;
+        gap: 26px;
+      }
+      #badge .photo {
+        flex: none;
+        width: 190px;
+        height: 190px;
+        border: 4px solid var(--ink);
+        background: var(--label);
+        display: grid;
+        place-items: center;
+      }
+      #badge .photo svg {
+        width: 160px;
+        height: 160px;
+      }
+      #badge dl {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+        font-size: 24px;
+        line-height: 1.25;
+      }
+      #badge dt {
+        color: var(--muted);
+      }
+      #badge dd.name {
+        font-size: 76px;
+        line-height: 0.9;
+      }
+      #badge dd.never {
+        margin-top: 6px;
+        width: fit-content;
+        padding: 2px 10px;
+        background: var(--ink);
+        color: var(--cotton);
+      }
+
+      /* 2. Title */
+      #s-title .inner {
+        padding-top: 70px;
+      }
+      #title-tag {
+        top: 230px;
+        left: 140px;
+      }
+      #title {
+        margin-top: 120px;
+        font-size: 210px;
+        max-width: 1640px;
+        text-wrap: balance;
+      }
+      #tagline {
+        margin-top: 48px;
+        font-size: 46px;
+        font-weight: 500;
+        line-height: 1.3;
+        color: var(--muted);
+        max-width: 1200px;
+        text-wrap: balance;
+      }
+      #title-plate {
+        position: absolute;
+        right: 140px;
+        bottom: 120px;
+        padding: 26px 40px;
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 6px 28px;
+        font-size: 28px;
+      }
+      #title-plate dt {
+        color: var(--muted);
+      }
+
+      /* 3. Bullets */
+      #bullets-head {
+        font-size: 170px;
+        margin-bottom: 56px;
+      }
+      .bullet {
+        position: relative;
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        align-items: center;
+        gap: 40px;
+        padding: 28px 0;
+      }
+      .bullet .rule {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 4px;
+        background: var(--ink);
+        transform-origin: left center;
+      }
+      .bullet .num {
+        width: 150px;
+        height: 120px;
+        display: grid;
+        place-items: center;
+        background: var(--safety);
+        color: var(--ink);
+        font-size: 104px;
+        font-variant-numeric: tabular-nums;
+      }
+      .bullet .txt {
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        line-height: 1.1;
+      }
+
+      /* 4. Metric */
+      #metric-label {
+        width: fit-content;
+        padding: 8px 18px;
+        border: 3px solid var(--cotton);
+        font-size: 32px;
+      }
+      #metric-row {
+        margin-top: 56px;
+        display: flex;
+        align-items: center;
+        gap: 56px;
+      }
+      .metric-box {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .metric-box .cap {
+        font-size: 30px;
+        color: var(--label);
+      }
+      #before-plate {
+        padding: 30px 46px 22px;
+      }
+      #metric-before {
+        font-size: 130px;
+        white-space: nowrap;
+        text-decoration: line-through;
+        text-decoration-thickness: 12px;
+        text-decoration-color: var(--safety);
+      }
+      #metric-after {
+        font-size: 240px;
+        white-space: nowrap;
+        color: var(--safety);
+      }
+      #metric-arrow {
+        flex: none;
+        width: 150px;
+        height: 90px;
+        margin-top: 48px;
+      }
+      #meter {
+        position: relative;
+        margin-top: 64px;
+        width: 1640px;
+        height: 36px;
+        border: 3px solid var(--cotton);
+        background-image: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.12) 0 12px, transparent 12px 24px);
+      }
+      #meter-fill {
+        position: absolute;
+        inset: 0;
+        background: var(--safety);
+        transform-origin: left center;
+      }
+      #meter-tag {
+        top: -28px;
+        left: calc(100% - 28px);
+        font-size: 24px;
+      }
+      #impact {
+        margin-top: 64px;
+        font-size: 56px;
+        font-weight: 700;
+      }
+
+      /* 5. Credits */
+      #credits-head {
+        font-size: 34px;
+        color: var(--muted);
+      }
+      #authors {
+        margin-top: 36px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 36px;
+      }
+      .author {
+        padding: 28px 48px 18px;
+        font-size: 120px;
+      }
+      #thanks {
+        margin-top: 80px;
+        font-size: 250px;
+      }
+
+      /* 6. Outro */
+      #s-outro .inner {
+        align-items: center;
+        text-align: center;
+      }
+      #outro-mark {
+        display: flex;
+        align-items: center;
+        gap: 36px;
+      }
+      #outro-lion {
+        width: 210px;
+        height: 210px;
+        border: 4px solid var(--cotton);
+        background: var(--label);
+        display: grid;
+        place-items: center;
+      }
+      #outro-lion svg {
+        width: 180px;
+        height: 180px;
+      }
+      #outro-name {
+        padding: 34px 56px 18px;
+        font-size: 210px;
+      }
+      #outro-cta {
+        margin-top: 64px;
+        display: inline-flex;
+        align-items: center;
+        gap: 28px;
+        padding: 30px 56px;
+        font-size: 64px;
+      }
+      #outro-cta svg {
+        width: 64px;
+        height: 64px;
+      }
+      #outro-tagline {
+        margin-top: 48px;
+        font-size: 36px;
+        color: var(--label);
+      }
+      #pr-url {
+        margin-top: 18px;
+        font-size: 30px;
+        color: var(--label);
+      }
+
+      /* Scene wipes: a hazard-striped panel sweeps across the cut. */
+      .wipe {
+        position: absolute;
+        top: -300px;
+        left: 0;
+        width: 3400px;
+        height: 1680px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="23" data-width="1920" data-height="1080">
+      <!-- Shared lion mark, referenced with <use>. Lives outside timed clips so it always resolves. -->
+      <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+        <defs>
+          <g id="lion-mark">
+            <g fill="#ff5a00" stroke="#0a0a0a" stroke-width="5">
+              <circle cx="100" cy="14" r="18" />
+              <circle cx="161" cy="39" r="18" />
+              <circle cx="186" cy="100" r="18" />
+              <circle cx="161" cy="161" r="18" />
+              <circle cx="100" cy="186" r="18" />
+              <circle cx="39" cy="161" r="18" />
+              <circle cx="14" cy="100" r="18" />
+              <circle cx="39" cy="39" r="18" />
+            </g>
+            <circle cx="100" cy="100" r="86" fill="#ff5a00" stroke="#0a0a0a" stroke-width="5" />
+            <circle cx="58" cy="62" r="15" fill="#ffffff" stroke="#0a0a0a" stroke-width="5" />
+            <circle cx="142" cy="62" r="15" fill="#ffffff" stroke="#0a0a0a" stroke-width="5" />
+            <circle cx="100" cy="106" r="58" fill="#ffffff" stroke="#0a0a0a" stroke-width="5" />
+            <rect x="72" y="88" width="14" height="16" fill="#0a0a0a" />
+            <rect x="114" y="88" width="14" height="16" fill="#0a0a0a" />
+            <path d="M88 118 L112 118 L100 132 Z" fill="#0a0a0a" />
+            <path d="M82 140 Q100 156 118 140" stroke="#0a0a0a" stroke-width="6" fill="none" stroke-linecap="square" />
+          </g>
+        </defs>
+      </svg>
+
+      <!-- Persistent progress bar -->
+      <div id="chrome-bottom" class="clip" data-start="0" data-duration="23" data-track-index="0" style="z-index: 20">
+        <div id="progress"></div>
+      </div>
+
+      <!-- Roary name plate + launch label, visible between intro and outro -->
+      <div id="chip" class="clip" data-start="3.75" data-duration="16.6" data-track-index="1" style="z-index: 15">
+        <div id="roary-mark" class="plate display"><span class="quoted">Roary</span></div>
+        <div id="hdr-label" class="mono">Launch video · <span id="hdr-product">Roary Demo Shop</span></div>
+      </div>
+
+      <!-- 1. Intro: black nylon, hazard bands, "LAUNCH DAY", the crew ID badge swings in -->
+      <section id="s-intro" class="clip scene ripstop" data-start="0" data-duration="3.85" data-track-index="2" style="z-index: 1">
+        <div id="band-top" class="band hazard" data-layout-allow-overflow></div>
+        <div id="band-bottom" class="band hazard" data-layout-allow-overflow></div>
+        <div class="inner">
+          <h1 id="intro-head" class="display">
+            <span class="line">"Launch</span>
+            <span class="line"><span class="hl">day</span>"</span>
+          </h1>
+          <div id="intro-sub" class="mono">Roary is celebrating a ship at <b id="product">Roary Demo Shop</b></div>
+        </div>
+        <div id="badge">
+          <span class="clip-tab"></span>
+          <div class="plate">
+            <div class="row mono"><span>Crew ID</span><span class="barcode"></span></div>
+            <div class="body">
+              <div class="photo">
+                <svg viewBox="-8 -8 216 216" aria-hidden="true"><use href="#lion-mark" /></svg>
+              </div>
+              <dl class="mono">
+                <dt>Name</dt>
+                <dd class="name display">Roary</dd>
+                <dt>Today</dt>
+                <dd>Made your launch video</dd>
+                <dd class="never">Never merges</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Feature title -->
+      <section id="s-title" class="clip scene light" data-start="3.65" data-duration="4.75" data-track-index="3" style="z-index: 2">
+        <div class="inner">
+          <h2 id="title" class="display quoted">Free shipping on orders over $50</h2>
+          <p id="tagline">Orders over $50 now ship free, and shoppers see it right in the cart.</p>
+        </div>
+        <div id="title-tag" class="zip-tag mono">Just shipped<br />PR merged<span class="barcode"></span></div>
+        <dl id="title-plate" class="plate mono">
+          <dt>Object</dt>
+          <dd>New feature</dd>
+          <dt>Zone</dt>
+          <dd id="plate-product">Roary Demo Shop</dd>
+          <dt>Status</dt>
+          <dd>Shipped</dd>
+        </dl>
+      </section>
+
+      <!-- 3. Bullets -->
+      <section id="s-bullets" class="clip scene light" data-start="8.1" data-duration="5.35" data-track-index="2" style="z-index: 3">
+        <div class="inner">
+          <h2 id="bullets-head" class="display quoted">What's new</h2>
+          <div class="bullet"><span class="rule"></span><div class="num display">01</div><div class="txt" id="bullet1">Free shipping on every order over $50</div></div>
+          <div class="bullet"><span class="rule"></span><div class="num display">02</div><div class="txt" id="bullet2">Shown live in the cart as you shop</div></div>
+          <div class="bullet"><span class="rule"></span><div class="num display">03</div><div class="txt" id="bullet3">No code needed at checkout</div></div>
+        </div>
+      </section>
+
+      <!-- 4. Metric / impact: the nylon panel rises over the bullets -->
+      <section id="s-metric" class="clip scene ripstop" data-start="12.85" data-duration="4.85" data-track-index="3" style="z-index: 4">
+        <div class="inner">
+          <div id="metric-label" class="mono">Impact · <span id="metric-label-text">Average cart value</span></div>
+          <div id="metric-row">
+            <div class="metric-box">
+              <div class="cap mono">Before</div>
+              <div id="before-plate" class="plate"><div id="metric-before" class="display">Avg cart $38</div></div>
+            </div>
+            <svg id="metric-arrow" viewBox="0 0 150 90" aria-hidden="true">
+              <path d="M6 45 H128 M96 13 L132 45 L96 77" stroke="#ff5a00" stroke-width="14" fill="none" stroke-linecap="square" />
+            </svg>
+            <div class="metric-box">
+              <div class="cap mono">After</div>
+              <div id="metric-after" class="display">Goal $50+</div>
+            </div>
+          </div>
+          <div id="meter">
+            <div id="meter-fill"></div>
+            <div id="meter-tag" class="zip-tag mono"><span id="meter-tag-text">Goal $50+</span><span class="barcode"></span></div>
+          </div>
+          <div id="impact">Every cart now has a reason to reach $50</div>
+        </div>
+      </section>
+
+      <!-- 5. Credits: the cotton panel rises over the nylon -->
+      <section id="s-credits" class="clip scene light" data-start="17.25" data-duration="3.4" data-track-index="2" style="z-index: 5">
+        <div class="inner">
+          <div id="credits-head" class="mono">Shipped by</div>
+          <div id="authors"><div class="author plate display">@martha</div></div>
+          <div id="thanks" class="display quoted">Thank you, <span class="hl">team.</span></div>
+        </div>
+      </section>
+
+      <!-- 6. Outro -->
+      <section id="s-outro" class="clip scene ripstop" data-start="20.3" data-duration="2.7" data-track-index="3" style="z-index: 6">
+        <div class="inner">
+          <div id="outro-mark">
+            <div id="outro-lion"><svg viewBox="-8 -8 216 216" aria-hidden="true"><use href="#lion-mark" /></svg></div>
+            <div id="outro-name" class="plate display"><span class="quoted">Roary</span></div>
+          </div>
+          <div id="outro-cta" class="plate safety mono">
+            <span id="outro">Hire your Roary</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 H19 M13 5 L20 12 L13 19" stroke="#0a0a0a" stroke-width="2.6" fill="none" stroke-linecap="square" /></svg>
+          </div>
+          <div id="outro-tagline" class="mono">The teammate you hire, not the tool you configure.</div>
+          <div id="pr-url" class="mono">github.com/scarranca/roary</div>
+        </div>
+      </section>
+
+      <!-- Hazard wipes, on top of everything -->
+      <div id="wipes" class="clip" data-start="0" data-duration="23" data-track-index="4" style="z-index: 30; pointer-events: none">
+        <div id="wipe-a" class="wipe hazard" data-layout-allow-overflow></div>
+        <div id="wipe-b" class="wipe hazard-on-safety" data-layout-allow-overflow></div>
+      </div>
+    </div>
+
+    <script>
+      // Content comes from HyperFrames variables (render with --variables-file content.json).
+      const v = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const str = (key) => (typeof v[key] === "string" && v[key].trim() ? v[key].trim() : null);
+      const setText = (id, value) => {
+        if (value) document.getElementById(id).textContent = value;
+      };
+      ["product", "tagline", "bullet1", "bullet2", "bullet3", "metricBefore", "metricAfter", "impact", "prUrl", "outro"].forEach((key) =>
+        setText(key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), str(key)),
+      );
+      ["hdr-product", "plate-product"].forEach((id) => setText(id, str("product")));
+      setText("metric-label-text", str("metricLabel"));
+      setText("meter-tag-text", str("metricAfter"));
+
+      // Put the last word of a line on a safety-orange highlight.
+      const accentLast = (id, value) => {
+        if (!value) return;
+        const el = document.getElementById(id);
+        const cut = value.lastIndexOf(" ");
+        el.textContent = cut > 0 ? value.slice(0, cut + 1) : "";
+        const span = document.createElement("span");
+        span.className = "hl";
+        span.textContent = cut > 0 ? value.slice(cut + 1) : value;
+        el.appendChild(span);
+      };
+      accentLast("title", str("title") || document.getElementById("title").textContent);
+      accentLast("thanks", str("thanks"));
+
+      // Shrink long copy so it never overflows (deterministic: based on length only).
+      const fit = (id, base, perChar, min, threshold) => {
+        const el = document.getElementById(id);
+        const len = el.textContent.length;
+        if (len > threshold) el.style.fontSize = Math.max(min, base - (len - threshold) * perChar) + "px";
+      };
+      fit("title", 210, 3, 120, 26);
+      fit("tagline", 46, 0.25, 34, 70);
+      ["bullet1", "bullet2", "bullet3"].forEach((id) => fit(id, 64, 0.6, 44, 40));
+      fit("metric-before", 130, 6, 80, 10);
+      fit("metric-after", 200, 10, 120, 8);
+      fit("thanks", 250, 6, 140, 16);
+      fit("outro", 64, 1.2, 44, 18);
+
+      const authors = (str("authors") || "@martha, @santiago")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean)
+        .slice(0, 4)
+        .map((a) => (a.startsWith("@") ? a : "@" + a));
+      const authorsEl = document.getElementById("authors");
+      authorsEl.innerHTML = "";
+      authors.forEach((handle) => {
+        const chip = document.createElement("div");
+        chip.className = "author plate display";
+        chip.textContent = handle;
+        authorsEl.appendChild(chip);
+      });
+
+      // Meter: fill to before/after ratio when both values carry a number, else 60%.
+      const num = (s) => parseFloat(((s || "").match(/[\d.]+/) || [])[0]);
+      const before = num(document.getElementById("metric-before").textContent);
+      const after = num(document.getElementById("metric-after").textContent);
+      const ratio = before > 0 && after > before ? Math.min(0.9, Math.max(0.15, before / after)) : 0.6;
+
+      const tl = gsap.timeline({ paused: true });
+      // The brand's motion curve, cubic-bezier(0.16, 1, 0.3, 1), is expo.out.
+      const ease = "expo.out";
+      // A tag swings once, then hangs still.
+      const swing = (sel, at, rest = 0) =>
+        tl.fromTo(sel, { rotation: rest + 22 }, { rotation: rest, duration: 1.6, ease: "elastic.out(1, 0.32)" }, at);
+      // One slow push per scene, so no hold ever freezes.
+      const push = (sel, start, dur) => tl.fromTo(sel, { scale: 1 }, { scale: 1.03, duration: dur, ease: "sine.inOut" }, start);
+      // Hazard wipe: sweep in, hold over the cut, sweep out.
+      const wipe = (sel, cut) => {
+        tl.fromTo(sel, { x: -3600, skewX: -14 }, { x: -800, duration: 0.36, ease: "power3.in" }, cut - 0.38);
+        tl.to(sel, { x: 2100, duration: 0.42, ease: "power3.out" }, cut + 0.06);
+      };
+      // A scene panel rising from the bottom edge, like the site's box-rise.
+      const rise = (sel, at) => tl.fromTo(sel, { yPercent: 100 }, { yPercent: 0, duration: 0.7, ease }, at);
+      const exit = (sel, at) => tl.to(sel, { y: -60, opacity: 0, duration: 0.4, ease: "power2.in" }, at);
+
+      tl.set(["#wipe-a", "#wipe-b"], { x: -3600 }, 0);
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 23, ease: "none" }, 0);
+      tl.from("#roary-mark", { y: -120, duration: 0.7, ease }, 3.85);
+      tl.from("#hdr-label", { y: -120, duration: 0.7, ease }, 3.95);
+      tl.to(["#roary-mark", "#hdr-label"], { y: -140, duration: 0.35, ease: "power2.in" }, 19.95);
+
+      // 1. Intro
+      tl.fromTo("#band-top", { x: -2200 }, { x: 0, duration: 0.55, ease }, 0.05);
+      tl.fromTo("#band-bottom", { x: 2200 }, { x: 0, duration: 0.55, ease }, 0.1);
+      tl.to("#band-top", { backgroundPositionX: "-204px", duration: 3.2, ease: "none" }, 0.6);
+      tl.to("#band-bottom", { backgroundPositionX: "204px", duration: 3.2, ease: "none" }, 0.6);
+      tl.from("#intro-head .line", { yPercent: 110, opacity: 0, duration: 0.7, ease, stagger: 0.14 }, 0.3);
+      tl.from("#intro-head .hl", { scaleX: 0, transformOrigin: "left center", duration: 0.5, ease }, 0.55);
+      tl.from("#intro-sub", { y: 30, opacity: 0, duration: 0.6, ease }, 0.85);
+      tl.fromTo("#badge", { y: -900 }, { y: 0, duration: 0.75, ease: "power3.out" }, 0.45);
+      swing("#badge", 0.9, -4);
+      push("#s-intro .inner", 0.3, 3.5);
+
+      // 2. Title (revealed under the ink/cotton hazard wipe)
+      wipe("#wipe-a", 3.75);
+      push("#s-title .inner", 3.75, 4.6);
+      tl.from("#title", { y: 100, opacity: 0, duration: 0.9, ease }, 3.95);
+      tl.from("#tagline", { y: 30, opacity: 0, duration: 0.7, ease }, 4.35);
+      tl.fromTo("#title-tag", { y: -260 }, { y: 0, duration: 0.5, ease: "power3.out" }, 4.05);
+      swing("#title-tag", 4.4, 6);
+      tl.from("#title-plate", { y: 60, opacity: 0, duration: 0.7, ease }, 4.6);
+      exit("#s-title .inner", 7.7);
+      exit(["#title-tag", "#title-plate"], 7.65);
+
+      // 3. Bullets
+      push("#s-bullets .inner", 8.1, 5.3);
+      tl.from("#bullets-head", { y: 60, opacity: 0, duration: 0.7, ease }, 8.2);
+      tl.from("#s-bullets .rule", { scaleX: 0, duration: 0.8, ease, stagger: 0.3 }, 8.45);
+      tl.from("#s-bullets .num", { yPercent: 60, opacity: 0, duration: 0.6, ease, stagger: 0.3 }, 8.55);
+      tl.from("#s-bullets .txt", { x: -60, opacity: 0, duration: 0.7, ease, stagger: 0.3 }, 8.65);
+
+      // 4. Metric: before lands, the meter fills to it, then the goal punches in and the tag swings.
+      rise("#s-metric", 12.85);
+      push("#s-metric .inner", 13.2, 4.5);
+      tl.from("#metric-label", { y: 30, opacity: 0, duration: 0.6, ease }, 13.3);
+      tl.from("#before-plate", { y: 60, opacity: 0, duration: 0.6, ease }, 13.45);
+      tl.from("#meter", { opacity: 0, duration: 0.5, ease }, 13.5);
+      tl.fromTo("#meter-fill", { scaleX: 0 }, { scaleX: ratio, duration: 0.9, ease: "power3.inOut" }, 13.6);
+      tl.from("#metric-arrow", { x: -60, opacity: 0, duration: 0.5, ease }, 13.95);
+      tl.from("#metric-after", { scale: 0.5, opacity: 0, transformOrigin: "left center", duration: 0.8, ease: "back.out(1.6)" }, 14.2);
+      tl.to("#meter-fill", { scaleX: 1, duration: 0.7, ease: "power3.out" }, 14.5);
+      tl.fromTo("#meter-tag", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 15.1);
+      swing("#meter-tag", 15.1, 78);
+      tl.from("#impact", { y: 30, opacity: 0, duration: 0.7, ease }, 15.0);
+
+      // 5. Credits
+      rise("#s-credits", 17.25);
+      push("#s-credits .inner", 17.6, 3.0);
+      tl.from("#credits-head", { y: 20, opacity: 0, duration: 0.5, ease }, 17.65);
+      tl.from("#authors .author", { y: 80, opacity: 0, duration: 0.7, ease: "back.out(1.5)", stagger: 0.16 }, 17.75);
+      tl.from("#thanks", { y: 70, opacity: 0, duration: 0.8, ease }, 18.35);
+
+      // 6. Outro (revealed under the orange hazard wipe); keeps breathing to the last frame.
+      wipe("#wipe-b", 20.35);
+      push("#s-outro .inner", 20.4, 2.6);
+      tl.from("#outro-lion", { scale: 0.4, rotation: -14, opacity: 0, duration: 0.7, ease: "back.out(2)" }, 20.55);
+      tl.from("#outro-name", { x: 80, opacity: 0, duration: 0.7, ease }, 20.65);
+      tl.from("#outro-cta", { y: 60, opacity: 0, duration: 0.7, ease }, 20.9);
+      tl.from(["#outro-tagline", "#pr-url"], { y: 24, opacity: 0, duration: 0.6, ease, stagger: 0.12 }, 21.15);
+      tl.to("#outro-cta svg", { x: 10, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 2 }, 21.6);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

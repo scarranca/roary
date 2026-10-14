@@ -1,0 +1,16 @@
+{
+  "product": "Roary Demo Shop",
+  "title": "Free shipping on orders over $50",
+  "tagline": "Orders over $50 now ship free, and shoppers see it right in the cart.",
+  "bullet1": "Free shipping on every order over $50",
+  "bullet2": "Shown live in the cart as you shop",
+  "bullet3": "No code needed at checkout",
+  "metricLabel": "Average cart value",
+  "metricBefore": "Avg cart $38",
+  "metricAfter": "Goal $50+",
+  "impact": "Every cart now has a reason to reach $50",
+  "authors": "@martha, @santiago",
+  "thanks": "Thank you, team.",
+  "outro": "Hire your Roary",
+  "prUrl": "github.com/scarranca/roary"
+}

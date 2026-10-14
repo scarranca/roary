@@ -8,6 +8,12 @@ Goal: one small, reviewable PR that fixes the diagnosed bug, adds a regression t
 
 Work only through the `github__*` tools. Do **not** clone, and do not run `git`, `npm` or tests in the sandbox: the local sandbox can't run them. The PR's checks (the Vercel preview build) are the CI signal.
 
+## Defaults for this team
+
+- Repo `scarranca/roary-demo-shop`, base branch `main`. Sentry org `roary`, project `javascript-nextjs-k4`.
+- If a short request like "open a fix PR" comes with no other context, it's about the latest diagnosed incident (usually `JAVASCRIPT-NEXTJS-K4-1`, the single-item checkout crash in `lib/checkout.ts`).
+- Before creating a branch, `github__listPullRequests` (state `open`) once: if an open `roary/fix-*` PR already fixes this incident, don't open a duplicate. Report that PR's link, its one-line fix, and that it's waiting for a human to review and merge.
+
 ## 1. Gather the incident
 
 You need: **repo** (`owner/name`), **culprit file(s)**, **suspect commit**, **base branch**, and the **Sentry issue id** if there is one.

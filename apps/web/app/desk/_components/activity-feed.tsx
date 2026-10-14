@@ -102,7 +102,9 @@ function useFeed() {
 
     async function poll() {
       try {
-        const response = await fetch("/api/feed", { cache: "no-store" });
+        // No cookies: the feed is public, and a stale skew cookie would route this
+        // request to an old deployment without /api/feed (see next.config.ts).
+        const response = await fetch("/api/feed", { cache: "no-store", credentials: "omit" });
         if (!response.ok) throw new Error(`feed ${response.status}`);
         const next = toRows((await response.json()) as Feed);
         if (cancelled) return;
