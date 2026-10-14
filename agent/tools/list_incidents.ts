@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db, schema } from "../lib/db";
+import { db, schema, toJson } from "../lib/db";
 
 export default defineTool({
   description:
@@ -14,11 +14,12 @@ export default defineTool({
     limit: z.number().int().min(1).max(50).default(10).describe("Max rows to return"),
   }),
   async execute({ status, limit }) {
-    return db
+    const rows = await db
       .select()
       .from(schema.incidents)
       .where(status ? eq(schema.incidents.status, status) : undefined)
       .orderBy(desc(schema.incidents.createdAt))
       .limit(limit);
+    return toJson(rows);
   },
 });

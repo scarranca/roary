@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, schema } from "../lib/db";
+import { db, schema, toJson } from "../lib/db";
 
 export default defineTool({
   description:
@@ -27,6 +27,6 @@ export default defineTool({
         set: { ...fields, updatedAt: sql`now()` },
       })
       .returning();
-    return row;
+    return toJson(row);
   },
 });
