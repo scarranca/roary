@@ -47,16 +47,17 @@ export default defineTool({
 ```
 
 ```ts
-// agent/connections/sentry.ts   (posthog.ts is identical with mcp.posthog.com + connect("posthog"))
+// agent/connections/sentry.ts   (posthog.ts is identical with mcp.posthog.com + connect("posthog/posthog"))
 import { connect } from '@vercel/connect/eve';
 import { defineMcpClientConnection } from 'eve/connections';
 export default defineMcpClientConnection({
   url: 'https://mcp.sentry.dev/mcp',
   description: 'Sentry: search, query, and debug errors and issues.',
-  auth: connect('sentry'),
+  auth: connect('sentry/sentry'), // the connector UID from `vercel connect create`, not the --name
 });
 ```
 
+- **Sentry** uses the user-scoped Vercel Connect connector `sentry/sentry`: each person signs in once via the `connect.vercel.com/authorize/...` link Roary posts. **PostHog** uses an app-level personal API key (`POSTHOG_API_KEY`, scope preset "MCP Server") via `auth.getToken`, because Vercel Connect's PostHog OAuth token exchange fails. A plain `curl` to `eve dev` falls back to `localDev()` and fails with `principal_required`; send `-H "authorization: Bearer $VERCEL_OIDC_TOKEN"` (from `.env.local`) so the request is your Vercel user.
 - **GitHub:** tools come from the `@github-tools/eve-extension` mount in `agent/extensions/github.ts` (registry item `extension/github-tools`; tools appear as `github__<name>` at runtime). `createGithubTools` from `@github-tools/sdk/eve` is deprecated and not replay-durable, so don't add `agent/tools/github.ts`. The channel is `githubChannel` from `eve/channels/github` in `agent/channels/github.ts`. Both use the Vercel Connect connector `github/roary`.
 - **Schedules:** `defineSchedule` from `eve/schedules` (5-field cron, **UTC**). Locally they only run via `POST /eve/v1/dev/schedules/<name>`.
 - **Memory:** `defineMemory` from `eve/memory`, in `agent/memory/<slot>.ts`.
@@ -134,7 +135,7 @@ The model never writes SQL. It calls typed tools that use `db`. Copy `agent/tool
 // agent/tools/save_launch.ts
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { db, schema } from "../lib/db";
+import { db, schema, toJson } from "../lib/db";
 
 export default defineTool({
   description: "Record a shipped feature (merged PR) so launch reviews and videos can reference it.",
@@ -145,13 +146,14 @@ export default defineTool({
   }),
   async execute(input) {
     const [row] = await db.insert(schema.launches).values(input).returning();
-    return row; // return small, JSON-friendly objects; the model reads them
+    return toJson(row); // plain JSON only (Dates break eve); keep it small, the model reads it
   },
 });
 ```
 
 Rules for DB tools:
 - Validate every input with zod. Never interpolate model input into raw SQL. If you need raw SQL, use Drizzle's `sql` template (it parameterizes).
+- Return plain JSON: wrap DB results in `toJson()` from `agent/lib/db.ts`. Drizzle returns `Date` objects and eve rejects non-JSON tool results (`ToolOutputSerializationError`).
 - Bound reads (`.limit()`, max 50) so tool output stays small.
 - Make writes idempotent (upsert on a natural key) because eve steps can retry.
 - No `DELETE` / `TRUNCATE` tools for Roary. If one is ever needed, it goes behind `approval: always()`.
