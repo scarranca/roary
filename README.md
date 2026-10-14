@@ -81,8 +81,8 @@ agent/
   lib/
     db.ts                  # Neon Postgres (pg pool + Drizzle)  ✅
     schema.ts              # incidents, launches  ✅
-  sandbox.ts               # Vercel Sandbox on Vercel, just-bash locally  ✅
-  sandbox/workspace/       # files copied into /workspace (video templates, etc.)
+  sandbox/sandbox.ts       # Vercel Sandbox on Vercel, just-bash locally  ✅
+  sandbox/workspace/video/ # HyperFrames launch-video template (content via content.json)  ✅
 drizzle/                   # SQL migrations (drizzle-kit)
 neon.ts                    # Neon services config (neon deploy)
 scripts/db-smoke.ts        # end-to-end DB check
