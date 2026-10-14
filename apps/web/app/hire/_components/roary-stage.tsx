@@ -14,6 +14,7 @@ export default function RoaryStage({
   energy,
   spin = 0,
   reducedMotion = false,
+  molding = false,
   snapshotRef,
 }: {
   readonly look: RoaryLook;
@@ -23,6 +24,7 @@ export default function RoaryStage({
   /** Extra turn in radians, from the keyboard (arrow keys on the stage). */
   readonly spin?: number;
   readonly reducedMotion?: boolean;
+  readonly molding?: boolean;
   /** Filled with a function that returns a square PNG of the figure. */
   readonly snapshotRef?: RefObject<(() => string | undefined) | null>;
 }) {
@@ -56,7 +58,7 @@ export default function RoaryStage({
       >
         <group position={[0, -1.05, 0]} rotation-y={spin}>
           <Suspense fallback={null}>
-            <RoaryFigure cue={cue} energy={energy} gear={gear} look={look} reducedMotion={reducedMotion} />
+            <RoaryFigure cue={cue} energy={energy} gear={gear} look={look} molding={molding} reducedMotion={reducedMotion} />
           </Suspense>
           <mesh position={[0, -0.05, 0]} receiveShadow>
             <cylinderGeometry args={[1.45, 1.5, 0.1, 64]} />
