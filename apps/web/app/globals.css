@@ -277,7 +277,29 @@ h3 {
   }
 }
 
+/* Live feed: a row whose status just changed flashes safety orange once. */
+.feed-flash {
+  animation: feed-flash 1.2s ease-out both;
+}
+
+@keyframes feed-flash {
+  0%,
+  35% {
+    background-color: var(--safety-soft);
+    box-shadow: inset 0 0 0 3px var(--safety);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 3px transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .feed-flash {
+    animation: none;
+    background-color: var(--safety-soft);
+  }
+
   *,
   *::before,
   *::after {
