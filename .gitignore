@@ -1,0 +1,10 @@
+node_modules/
+.env*
+!.env.example
+.vercel/
+.eve/
+dist/
+*.mp4
+*.mov
+*.webm
+.DS_Store
