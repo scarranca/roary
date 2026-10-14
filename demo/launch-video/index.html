@@ -1,0 +1,640 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"product","type":"string","label":"Product or repo","description":"Name of the product or owner/repo that shipped the feature.","default":"Roary Demo Shop"},
+    {"id":"title","type":"string","label":"Feature title","description":"Short name of the shipped feature.","default":"Free shipping on orders over $50"},
+    {"id":"tagline","type":"string","label":"Tagline","description":"One sentence on what the feature does for users.","default":"Orders over $50 now ship free, and shoppers see it right in the cart."},
+    {"id":"bullet1","type":"string","label":"Bullet 1","description":"First highlight, under 60 characters.","default":"Free shipping on every order over $50"},
+    {"id":"bullet2","type":"string","label":"Bullet 2","description":"Second highlight, under 60 characters.","default":"Shown live in the cart as you shop"},
+    {"id":"bullet3","type":"string","label":"Bullet 3","description":"Third highlight, under 60 characters.","default":"No code needed at checkout"},
+    {"id":"metricLabel","type":"string","label":"Metric label","description":"What the before/after numbers measure.","default":"Average cart value"},
+    {"id":"metricBefore","type":"string","label":"Metric before","description":"Value before the change.","default":"Avg cart $38"},
+    {"id":"metricAfter","type":"string","label":"Metric after","description":"Value after the change, or the goal.","default":"Goal $50+"},
+    {"id":"impact","type":"string","label":"Impact line","description":"One line on the user impact.","default":"Every cart now has a reason to reach $50"},
+    {"id":"authors","type":"string","label":"Authors","description":"Comma-separated GitHub handles of the people who shipped it.","default":"@martha, @santiago"},
+    {"id":"thanks","type":"string","label":"Thank-you line","description":"Closing thank-you; the last word is highlighted.","default":"Thank you, team."},
+    {"id":"outro","type":"string","label":"Outro line","description":"Final call to action; the last word is highlighted.","default":"Hire your Roary"},
+    {"id":"prUrl","type":"string","label":"PR link","description":"Pull request or repo URL without https://.","default":"github.com/scarranca/roary"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!-- Copy of Roary's template (agent/sandbox/workspace/video/), extended for the pre-rendered demo video. -->
+    <script src="vendor/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("vendor/inter-latin-wght.woff2") format("woff2");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      :root {
+        --bg: #140b05;
+        --bg-2: #2a1407;
+        --orange: #ff8a1f;
+        --amber: #ffb547;
+        --cream: #fff4e6;
+        --muted: #d9b99a;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+        color: var(--cream);
+        background: radial-gradient(120% 90% at 50% 110%, var(--bg-2) 0%, var(--bg) 60%);
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .scene {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 140px;
+      }
+      .glow {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(90px);
+      }
+      #glow-a {
+        width: 900px;
+        height: 900px;
+        left: -200px;
+        top: -260px;
+        background: #ff7a00;
+        opacity: 0.28;
+      }
+      #glow-b {
+        width: 800px;
+        height: 800px;
+        right: -220px;
+        bottom: -300px;
+        background: #ffb547;
+        opacity: 0.22;
+      }
+      #grain {
+        background-image: radial-gradient(rgba(255, 244, 230, 0.05) 1px, transparent 1px);
+        background-size: 6px 6px;
+      }
+      #vignette {
+        background: radial-gradient(85% 75% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+      }
+      #progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 8px;
+        width: 1920px;
+        background: linear-gradient(90deg, var(--orange), var(--amber));
+        transform-origin: left center;
+      }
+      .brand-chip {
+        position: absolute;
+        top: 56px;
+        left: 72px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--cream);
+      }
+      .brand-chip svg {
+        width: 56px;
+        height: 56px;
+      }
+      .kicker {
+        display: inline-block;
+        padding: 14px 30px;
+        border-radius: 999px;
+        border: 2px solid rgba(255, 138, 31, 0.6);
+        background: rgba(255, 138, 31, 0.12);
+        color: var(--amber);
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      /* Intro */
+      #flash {
+        background: radial-gradient(40% 40% at 50% 42%, rgba(255, 181, 71, 0.55) 0%, transparent 70%);
+        opacity: 0;
+      }
+      .ring {
+        position: absolute;
+        left: 50%;
+        top: 38%;
+        width: 400px;
+        height: 400px;
+        margin: -200px 0 0 -200px;
+        border-radius: 50%;
+        border: 6px solid var(--amber);
+        opacity: 0;
+      }
+      #lion {
+        width: 360px;
+        height: 360px;
+      }
+      #intro-name {
+        margin-top: 36px;
+        font-size: 132px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+      #intro-name .ch {
+        display: inline-block;
+      }
+      #intro-sub {
+        margin-top: 24px;
+        font-size: 40px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      #intro-sub b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+      /* Title */
+      #title {
+        margin-top: 44px;
+        font-size: 150px;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 1.04;
+        padding-bottom: 0.06em;
+        background: linear-gradient(180deg, #fff8ef 0%, #ffd29a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        max-width: 1640px;
+      }
+      #tagline {
+        margin-top: 32px;
+        font-size: 44px;
+        font-weight: 500;
+        color: var(--muted);
+        max-width: 1400px;
+        line-height: 1.3;
+        text-wrap: balance;
+      }
+      /* Bullets */
+      #bullets-head {
+        font-size: 72px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 64px;
+      }
+      .bullet {
+        display: flex;
+        align-items: center;
+        gap: 36px;
+        width: 1300px;
+        padding: 34px 44px;
+        margin: 14px 0;
+        border-radius: 28px;
+        background: rgba(255, 244, 230, 0.06);
+        border: 2px solid rgba(255, 244, 230, 0.1);
+        text-align: left;
+      }
+      .bullet .num {
+        flex: none;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--orange), var(--amber));
+        color: #1a0d04;
+        font-size: 38px;
+        font-weight: 800;
+      }
+      .bullet .txt {
+        font-size: 46px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        line-height: 1.2;
+      }
+      /* Metric */
+      #metric-label {
+        margin-top: 36px;
+        font-size: 48px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      #metric-row {
+        margin-top: 32px;
+        display: flex;
+        align-items: center;
+        gap: 48px;
+      }
+      .metric-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .metric-box .cap {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      /* Same box height for both values so the Before/After captions line up. */
+      #metric-before,
+      #metric-after {
+        height: 200px;
+        display: flex;
+        align-items: center;
+        line-height: 1;
+      }
+      #metric-before {
+        font-size: 150px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        white-space: nowrap;
+        color: rgba(255, 244, 230, 0.62);
+        text-decoration: line-through;
+        text-decoration-thickness: 8px;
+        text-decoration-color: rgba(255, 138, 31, 0.8);
+      }
+      #metric-after {
+        font-size: 220px;
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        white-space: nowrap;
+        color: var(--orange);
+        line-height: 1;
+      }
+      #metric-arrow {
+        flex: none;
+        width: 140px;
+        height: 80px;
+        margin-top: 46px;
+      }
+      /* Cart meter: the bar fills to "before", then pushes past the goal when "after" lands. */
+      #meter {
+        position: relative;
+        margin-top: 56px;
+        width: 1100px;
+        height: 22px;
+        border-radius: 999px;
+        background: rgba(255, 244, 230, 0.1);
+      }
+      #meter-fill {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--orange), var(--amber));
+        transform-origin: left center;
+        box-shadow: 0 0 32px rgba(255, 138, 31, 0.55);
+      }
+      #meter-goal {
+        position: absolute;
+        right: -6px;
+        top: -12px;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: var(--cream);
+        border: 6px solid var(--orange);
+      }
+      #impact {
+        margin-top: 48px;
+        font-size: 50px;
+        font-weight: 700;
+        color: var(--cream);
+      }
+      /* Credits */
+      #credits-head {
+        font-size: 44px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      #authors {
+        margin-top: 48px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 28px;
+        max-width: 1600px;
+      }
+      .author {
+        padding: 22px 44px;
+        border-radius: 999px;
+        background: rgba(255, 244, 230, 0.08);
+        border: 2px solid rgba(255, 181, 71, 0.45);
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #thanks {
+        margin-top: 72px;
+        font-size: 104px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+      #thanks span,
+      #outro-name span {
+        color: var(--orange);
+      }
+      /* Outro */
+      #outro-lion {
+        width: 240px;
+        height: 240px;
+      }
+      #outro-name {
+        margin-top: 32px;
+        font-size: 120px;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 1;
+      }
+      #outro-sub {
+        margin-top: 22px;
+        font-size: 40px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      #pr-url {
+        margin-top: 48px;
+        padding: 18px 34px;
+        border-radius: 18px;
+        background: rgba(255, 244, 230, 0.07);
+        font-size: 32px;
+        font-weight: 600;
+        color: var(--amber);
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-wwvb" id="root" data-composition-id="main" data-start="0" data-duration="23" data-width="1920" data-height="1080">
+      <!-- Shared lion mark, referenced with <use>. Lives outside timed clips so it always resolves. -->
+      <svg data-hf-id="hf-p3r6" width="0" height="0" style="position: absolute" aria-hidden="true">
+        <defs data-hf-id="hf-mh0t">
+          <radialGradient data-hf-id="hf-l0nd" id="mane-grad" cx="50%" cy="50%" r="50%">
+            <stop data-hf-id="hf-d0tv" offset="0%" stop-color="#ffb547" />
+            <stop data-hf-id="hf-29ne" offset="100%" stop-color="#ff7a00" />
+          </radialGradient>
+          <g data-hf-id="hf-wtph" id="lion-mark">
+            <circle data-hf-id="hf-pehu" cx="100" cy="100" r="92" fill="url(#mane-grad)" />
+            <g data-hf-id="hf-m6h6" fill="#ff7a00">
+              <circle data-hf-id="hf-kg99" cx="100" cy="12" r="18" />
+              <circle data-hf-id="hf-o16h" cx="162" cy="38" r="18" />
+              <circle data-hf-id="hf-toml" cx="188" cy="100" r="18" />
+              <circle data-hf-id="hf-bu1p" cx="162" cy="162" r="18" />
+              <circle data-hf-id="hf-t6r1" cx="100" cy="188" r="18" />
+              <circle data-hf-id="hf-txhd" cx="38" cy="162" r="18" />
+              <circle data-hf-id="hf-hwr1" cx="12" cy="100" r="18" />
+              <circle data-hf-id="hf-ud3x" cx="38" cy="38" r="18" />
+            </g>
+            <circle data-hf-id="hf-http" cx="100" cy="104" r="58" fill="#ffe2b8" />
+            <circle data-hf-id="hf-anai" cx="58" cy="62" r="14" fill="#ffe2b8" />
+            <circle data-hf-id="hf-d2o2" cx="142" cy="62" r="14" fill="#ffe2b8" />
+            <circle data-hf-id="hf-xm0t" cx="80" cy="96" r="8" fill="#2a1407" />
+            <circle data-hf-id="hf-v7xs" cx="120" cy="96" r="8" fill="#2a1407" />
+            <path data-hf-id="hf-t16a" d="M88 116 L112 116 L100 130 Z" fill="#2a1407" />
+            <path data-hf-id="hf-7o0c" d="M84 138 Q100 152 116 138" stroke="#2a1407" stroke-width="6" fill="none" stroke-linecap="round" />
+          </g>
+        </defs>
+      </svg>
+
+      <!-- Persistent background -->
+      <div data-hf-id="hf-xqyo" id="bg" class="clip" data-start="0" data-duration="23" data-track-index="0">
+        <div data-hf-id="hf-li45" id="glow-a" class="glow" data-layout-allow-overflow></div>
+        <div data-hf-id="hf-pg86" id="glow-b" class="glow" data-layout-allow-overflow></div>
+        <div data-hf-id="hf-9ww1" id="grain" class="clip"></div>
+        <div data-hf-id="hf-8bda" id="vignette" class="clip"></div>
+        <div data-hf-id="hf-o6ww" id="progress"></div>
+      </div>
+
+      <!-- Brand chip, visible between intro and outro -->
+      <div data-hf-id="hf-xblt" id="chip" class="clip" data-start="3.7" data-duration="16.7" data-track-index="1">
+        <div data-hf-id="hf-34at" class="brand-chip">
+          <svg data-hf-id="hf-3etg" viewBox="-12 -12 224 224" aria-hidden="true"><use data-hf-id="hf-t8go" href="#lion-mark" /></svg>
+          Roary
+        </div>
+      </div>
+
+      <!-- 1. Intro -->
+      <section data-hf-id="hf-of87" id="s-intro" class="clip scene" data-start="0" data-duration="3.8" data-track-index="2">
+        <div data-hf-id="hf-qnfa" id="flash" class="clip"></div>
+        <div data-hf-id="hf-bcs5" id="ring-a" class="ring" data-layout-allow-overflow></div>
+        <div data-hf-id="hf-faw6" id="ring-b" class="ring" data-layout-allow-overflow></div>
+        <svg data-hf-id="hf-k4hw" id="lion" viewBox="-12 -12 224 224" aria-hidden="true">
+          <use data-hf-id="hf-927k" href="#lion-mark" />
+        </svg>
+        <div data-hf-id="hf-3qya" id="intro-name">Roary</div>
+        <div data-hf-id="hf-vdtz" id="intro-sub">has a launch to celebrate at <b data-hf-id="hf-uim3" id="product">Roary Demo Shop</b></div>
+      </section>
+
+      <!-- 2. Feature title -->
+      <section data-hf-id="hf-thlf" id="s-title" class="clip scene" data-start="3.7" data-duration="4.5" data-track-index="2">
+        <div data-hf-id="hf-tpwm" class="kicker">Just shipped</div>
+        <h1 data-hf-id="hf-255m" id="title">Free shipping on orders over $50</h1>
+        <p data-hf-id="hf-ctl7" id="tagline">Orders over $50 now ship free, and shoppers see it right in the cart.</p>
+      </section>
+
+      <!-- 3. Bullets -->
+      <section data-hf-id="hf-j2tv" id="s-bullets" class="clip scene" data-start="8.1" data-duration="4.9" data-track-index="2">
+        <h2 data-hf-id="hf-ezj4" id="bullets-head">What's new</h2>
+        <div data-hf-id="hf-2dhk" class="bullet"><div data-hf-id="hf-1dhv" class="num">1</div><div data-hf-id="hf-px5o" class="txt" id="bullet1">Free shipping on every order over $50</div></div>
+        <div data-hf-id="hf-ot34" class="bullet"><div data-hf-id="hf-0z6u" class="num">2</div><div data-hf-id="hf-2maq" class="txt" id="bullet2">Shown live in the cart as you shop</div></div>
+        <div data-hf-id="hf-nm61" class="bullet"><div data-hf-id="hf-0kvt" class="num">3</div><div data-hf-id="hf-wmbf" class="txt" id="bullet3">No code needed at checkout</div></div>
+      </section>
+
+      <!-- 4. Metric / impact -->
+      <section data-hf-id="hf-umfd" id="s-metric" class="clip scene" data-start="12.9" data-duration="4.5" data-track-index="2">
+        <div data-hf-id="hf-sa09" class="kicker">Impact</div>
+        <div data-hf-id="hf-8suq" id="metric-label">Average cart value</div>
+        <div data-hf-id="hf-tpde" id="metric-row">
+          <div data-hf-id="hf-c3w4" class="metric-box"><div data-hf-id="hf-j53f" class="cap">Before</div><div data-hf-id="hf-re9m" id="metric-before">Avg cart $38</div></div>
+          <svg data-hf-id="hf-3b2h" id="metric-arrow" viewBox="0 0 140 80" aria-hidden="true">
+            <path data-hf-id="hf-h2fm" d="M6 40 H120 M92 12 L124 40 L92 68" stroke="#ff8a1f" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div data-hf-id="hf-5ioc" class="metric-box"><div data-hf-id="hf-pikq" class="cap">After</div><div data-hf-id="hf-glyz" id="metric-after">Goal $50+</div></div>
+        </div>
+        <div data-hf-id="hf-x2n0" id="meter"><div data-hf-id="hf-vgvi" id="meter-fill"></div><div data-hf-id="hf-866s" id="meter-goal"></div></div>
+        <div data-hf-id="hf-hqrk" id="impact">Every cart now has a reason to reach $50</div>
+      </section>
+
+      <!-- 5. Credits -->
+      <section data-hf-id="hf-chwp" id="s-credits" class="clip scene" data-start="17.3" data-duration="3.1" data-track-index="2">
+        <div data-hf-id="hf-17h8" id="credits-head">Shipped by</div>
+        <div data-hf-id="hf-hr1f" id="authors"><div data-hf-id="hf-hd04" class="author">@martha</div></div>
+        <div data-hf-id="hf-jeub" id="thanks">Thank you, <span data-hf-id="hf-s8kq">team.</span></div>
+      </section>
+
+      <!-- 6. Outro -->
+      <section data-hf-id="hf-rn8z" id="s-outro" class="clip scene" data-start="20.3" data-duration="2.7" data-track-index="2">
+        <svg data-hf-id="hf-k9oy" id="outro-lion" viewBox="-12 -12 224 224" aria-hidden="true"><use data-hf-id="hf-7vah" href="#lion-mark" /></svg>
+        <div data-hf-id="hf-q98j" id="outro-name">Hire your <span data-hf-id="hf-p2mg">Roary</span></div>
+        <div data-hf-id="hf-1sxe" id="outro-sub">Your AI teammate</div>
+        <div data-hf-id="hf-3we2" id="pr-url">github.com/scarranca/roary</div>
+      </section>
+    </div>
+
+    <script>
+      // Content comes from HyperFrames variables (render with --variables-file content.json).
+      const v = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const str = (key) => (typeof v[key] === "string" && v[key].trim() ? v[key].trim() : null);
+      const setText = (id, value) => {
+        if (value) document.getElementById(id).textContent = value;
+      };
+      ["product", "title", "tagline", "bullet1", "bullet2", "bullet3", "metricLabel", "metricBefore", "metricAfter", "impact", "prUrl"].forEach((key) =>
+        setText(key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), str(key)),
+      );
+
+      // Highlight the last word of a line in orange.
+      const accentLast = (id, value) => {
+        if (!value) return;
+        const el = document.getElementById(id);
+        const cut = value.lastIndexOf(" ");
+        el.textContent = cut > 0 ? value.slice(0, cut + 1) : "";
+        const span = document.createElement("span");
+        span.textContent = cut > 0 ? value.slice(cut + 1) : value;
+        el.appendChild(span);
+      };
+      accentLast("thanks", str("thanks"));
+      accentLast("outro-name", str("outro"));
+
+      // Shrink long copy so it never overflows (deterministic: based on length only).
+      const fit = (id, base, perChar, min, threshold) => {
+        const el = document.getElementById(id);
+        const len = el.textContent.length;
+        if (len > threshold) el.style.fontSize = Math.max(min, base - (len - threshold) * perChar) + "px";
+      };
+      fit("title", 150, 3.2, 84, 18);
+      fit("tagline", 44, 0.25, 32, 70);
+      ["bullet1", "bullet2", "bullet3"].forEach((id) => fit(id, 46, 0.4, 32, 48));
+      fit("metric-after", 220, 18, 110, 5);
+      fit("metric-before", 150, 9, 72, 5);
+      fit("outro-name", 120, 3, 72, 16);
+
+      const authors = (str("authors") || "@martha, @santiago")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((a) => (a.startsWith("@") ? a : "@" + a));
+      document.getElementById("authors").innerHTML = "";
+      authors.forEach((handle) => {
+        const chip = document.createElement("div");
+        chip.className = "author";
+        chip.textContent = handle;
+        document.getElementById("authors").appendChild(chip);
+      });
+
+      // Split the intro name into letters for a staggered reveal.
+      const nameEl = document.getElementById("intro-name");
+      nameEl.innerHTML = "";
+      [..."Roary"].forEach((c) => {
+        const ch = document.createElement("span");
+        ch.className = "ch";
+        ch.textContent = c;
+        nameEl.appendChild(ch);
+      });
+
+      // Meter: fill to before/after ratio when both values carry a number, else 60%.
+      const num = (s) => parseFloat(((s || "").match(/[\d.]+/) || [])[0]);
+      const before = num(document.getElementById("metric-before").textContent);
+      const after = num(document.getElementById("metric-after").textContent);
+      const ratio = before > 0 && after > before ? Math.min(0.9, Math.max(0.15, before / after)) : 0.6;
+
+      const tl = gsap.timeline({ paused: true });
+      const ease = "expo.out";
+      const exit = { opacity: 0, y: -40, filter: "blur(10px)", duration: 0.45, ease: "power2.in" };
+      // Each scene gets one slow camera push so no hold ever freezes.
+      const push = (sel, start, dur) => tl.fromTo(sel, { scale: 1 }, { scale: 1.04, duration: dur, ease: "sine.inOut" }, start);
+
+      // Background: slow drift for the whole video, plus a progress bar.
+      tl.to("#glow-a", { x: 260, y: 140, duration: 23, ease: "sine.inOut" }, 0);
+      tl.to("#glow-b", { x: -240, y: -120, duration: 23, ease: "sine.inOut" }, 0);
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 23, ease: "none" }, 0);
+      tl.from("#chip .brand-chip", { opacity: 0, x: -30, duration: 0.7, ease }, 3.8);
+      tl.to("#chip .brand-chip", { opacity: 0, duration: 0.4, ease: "power2.in" }, 19.9);
+
+      // 1. Intro: the lion lands with a flash and two shockwave rings, then the name snaps in.
+      tl.from("#lion", { scale: 0.15, rotation: -30, opacity: 0, duration: 0.8, ease: "back.out(2.2)" }, 0.1);
+      tl.fromTo("#flash", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 0.55);
+      tl.to("#flash", { opacity: 0, duration: 0.9, ease: "power2.out" }, 0.7);
+      tl.fromTo("#ring-a", { scale: 0.6, opacity: 0.9 }, { scale: 2.6, opacity: 0, duration: 1.1, ease: "expo.out" }, 0.55);
+      tl.fromTo("#ring-b", { scale: 0.6, opacity: 0.6 }, { scale: 3.4, opacity: 0, duration: 1.4, ease: "expo.out" }, 0.68);
+      tl.to("#lion", { rotation: 6, scale: 1.04, duration: 2.6, ease: "sine.inOut" }, 0.9);
+      tl.from("#intro-name .ch", { y: 90, opacity: 0, rotationX: -70, duration: 0.7, ease, stagger: 0.06 }, 0.6);
+      tl.from("#intro-sub", { y: 30, opacity: 0, duration: 0.8, ease }, 1.15);
+      tl.to("#s-intro", { opacity: 0, scale: 1.08, filter: "blur(12px)", duration: 0.45, ease: "power2.in" }, 3.3);
+
+      // 2. Title
+      push("#s-title", 3.7, 4.5);
+      tl.from("#s-title .kicker", { y: -30, opacity: 0, duration: 0.6, ease }, 3.8);
+      tl.from("#title", { y: 90, opacity: 0, filter: "blur(14px)", duration: 1.0, ease }, 3.9);
+      tl.from("#tagline", { y: 30, opacity: 0, duration: 0.8, ease }, 4.45);
+      tl.to("#s-title", exit, 7.7);
+
+      // 3. Bullets
+      push("#s-bullets", 8.1, 4.9);
+      tl.from("#bullets-head", { y: 40, opacity: 0, duration: 0.6, ease }, 8.2);
+      tl.from("#s-bullets .bullet", { x: -140, opacity: 0, duration: 0.8, ease, stagger: 0.32 }, 8.45);
+      tl.from("#s-bullets .num", { scale: 0, rotation: -90, duration: 0.6, ease: "back.out(2)", stagger: 0.32 }, 8.6);
+      tl.to("#s-bullets", exit, 12.5);
+
+      // 4. Metric: before lands, meter fills to it, then the goal punches in and the meter completes.
+      push("#s-metric", 12.9, 4.5);
+      tl.from("#s-metric .kicker", { y: -30, opacity: 0, duration: 0.6, ease }, 13.0);
+      tl.from("#metric-label", { opacity: 0, duration: 0.6, ease }, 13.1);
+      tl.from("#metric-before", { y: 40, opacity: 0, duration: 0.6, ease }, 13.25);
+      tl.from("#meter", { opacity: 0, scaleX: 0.9, duration: 0.6, ease }, 13.3);
+      tl.fromTo("#meter-fill", { scaleX: 0 }, { scaleX: ratio, duration: 0.9, ease: "power3.inOut" }, 13.4);
+      tl.from("#metric-arrow", { x: -50, opacity: 0, duration: 0.6, ease }, 13.75);
+      tl.from("#metric-after", { scale: 0.4, opacity: 0, duration: 0.8, ease: "back.out(1.7)" }, 14.05);
+      tl.to("#meter-fill", { scaleX: 1, duration: 0.7, ease: "power3.out" }, 14.3);
+      tl.fromTo("#meter-goal", { scale: 1 }, { scale: 1.35, duration: 0.25, ease: "power2.out", yoyo: true, repeat: 1 }, 14.9);
+      tl.from("#impact", { y: 30, opacity: 0, duration: 0.8, ease }, 14.6);
+      tl.to("#s-metric", exit, 16.9);
+
+      // 5. Credits
+      push("#s-credits", 17.3, 3.1);
+      tl.from("#credits-head", { y: -20, opacity: 0, duration: 0.6, ease }, 17.4);
+      tl.from("#authors .author", { y: 60, opacity: 0, scale: 0.85, duration: 0.7, ease: "back.out(1.6)", stagger: 0.18 }, 17.6);
+      tl.from("#thanks", { y: 40, opacity: 0, filter: "blur(10px)", duration: 0.8, ease }, 18.3);
+      tl.to("#s-credits", { opacity: 0, filter: "blur(10px)", duration: 0.4, ease: "power2.in" }, 19.95);
+
+      // 6. Outro: lion returns, call to action, and the frame keeps breathing to the last frame.
+      push("#s-outro", 20.3, 2.7);
+      tl.from("#outro-lion", { scale: 0.3, rotation: -20, opacity: 0, duration: 0.8, ease: "back.out(2)" }, 20.4);
+      tl.from("#outro-name", { y: 50, opacity: 0, filter: "blur(10px)", duration: 0.8, ease }, 20.6);
+      tl.from(["#outro-sub", "#pr-url"], { y: 30, opacity: 0, duration: 0.7, ease, stagger: 0.14 }, 20.9);
+      tl.to("#outro-lion", { rotation: 8, duration: 1.8, ease: "sine.inOut" }, 21.2);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
