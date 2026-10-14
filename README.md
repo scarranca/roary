@@ -26,7 +26,7 @@ Roary closes that loop. You don't configure it like a dashboard. You **hire** it
 
 | Job | Trigger | What happens | Status |
 |---|---|---|---|
-| 🚨 **Triage errors** | Sentry issue, or ask in chat | Pulls the stack trace (Sentry MCP), counts affected users (PostHog MCP) and finds the likely culprit commit (GitHub). Then it posts a plain-English incident report with an explicit confidence level. | Connections live; triage skill in progress (#6/#7) |
+| 🚨 **Triage errors** | Sentry issue, or ask in chat | Pulls the stack trace (Sentry API, app token), counts affected users (PostHog MCP) and finds the likely culprit commit (GitHub). Then it posts a plain-English incident report with an explicit confidence level. | Connections live; triage skill in progress (#6/#7) |
 | 🛠️ **Open fix PRs** | After triage, or `@roary fix this` | Writes the minimal patch plus a regression test on a `roary/fix-*` branch and opens a PR linking the incident. **Merging always needs a human.** | Proven on `eve dev` ([shop#1](https://github.com/scarranca/roary-demo-shop/pull/1)); skill in progress (#32) |
 | 🔍 **Review launches** | Daily + each prod deploy | Summarizes what shipped in the last 24h and how errors and usage changed. It can *suggest* a rollback; a human runs it. | Planned |
 | 🎬 **Make launch videos** | A PR labeled `feature` / `launch` merges | Turns the PR into a [HyperFrames](https://hyperframes.heygen.com) composition, renders an MP4 in Vercel Sandbox, uploads it to Blob and posts the link on the PR. | Template done; render + trigger in progress (#31) |
@@ -74,7 +74,6 @@ agent/
   agent.ts                 # defineAgent: model (claude-sonnet-5 via AI Gateway)   ✅
   instructions.md          # Roary's personality, values, guardrails                ✅
   connections/
-    sentry.ts              # Sentry MCP via Vercel Connect (sentry/sentry)          ✅
     posthog.ts             # PostHog MCP (personal API key)                         ✅
     vercel.ts              # Vercel MCP: deployments, runtime logs (read-only)      📝
   channels/

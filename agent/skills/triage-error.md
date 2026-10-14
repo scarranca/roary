@@ -4,7 +4,9 @@ description: Use when asked to triage, investigate or diagnose a Sentry error or
 
 # Triage a Sentry error
 
-Goal: in under 2 minutes, go from a Sentry issue to a posted incident report with the root cause, the number of users hit, the suspect commit and an explicit confidence. Work fast: fetch each thing once, do at most one widened search per step, and if a tool fails twice, say what failed and move on with what you have. Don't call Seer (`sentry__analyze_issue_with_seer`); it's slow and you don't need it.
+Goal: in under 2 minutes, go from a Sentry issue to a posted incident report with the root cause, the number of users hit, the suspect commit and an explicit confidence. Work fast: fetch each thing once, do at most one widened search per step, and if a tool fails twice, say what failed and move on with what you have.
+
+Everything below uses Roary's app-level credentials (Sentry token, PostHog key, GitHub App), so it works in the public chat with nobody signed in. Never ask the person to sign in or connect an account for this flow.
 
 ## Defaults for this team
 
@@ -24,16 +26,16 @@ Call `list_incidents` (limit 20) and look for this issue by its Sentry short id 
 
 ## 2. Read the error in Sentry
 
-Call `get_sentry_issue` with the issue id (numeric id or short id). It returns the title, culprit, first/last seen, event and user counts, the permalink and the top in-app stack frames with source context.
+If you only have a symptom ("checkout is broken") and no issue id, call `list_sentry_issues` once (its defaults are org `roary`, project `javascript-nextjs-k4`) and pick the issue that matches the flow. For checkout that is `JAVASCRIPT-NEXTJS-K4-1` (`TypeError: Cannot read properties of undefined (reading 'lineTotal')` on `POST /api/checkout`).
 
-If it reports that the token is missing or fails, use the Sentry MCP tools instead: `sentry__get_sentry_resource` for the issue and its latest event, or `sentry__search_issues` if you only have a title.
+Call `get_sentry_issue` with the issue id (numeric id or short id). It returns the title, culprit, first/last seen, event and user counts, the permalink and the top in-app stack frames with source context.
 
 From the top in-app frame, note: **file path, line, function, the failing expression**, and `firstSeen`.
 
 Stop here, and **don't post anything on GitHub**, if:
 
 - the issue doesn't exist or Sentry has no matching unresolved issue: say so in one line; or
-- you couldn't read the issue from Sentry at all (both paths failed, e.g. token missing and `principal_required` on the `sentry__*` tools in an automatic session). Never diagnose from the trigger message alone. Call `save_incident` with `status: "investigating"` and a `diagnosis` that says which access is missing (e.g. "SENTRY_AUTH_TOKEN not configured"), then reply with that in one line.
+- you couldn't read the issue from Sentry at all (e.g. `SENTRY_AUTH_TOKEN` missing, or the Sentry API failing twice). Never diagnose from the trigger message alone. Call `save_incident` with `status: "investigating"` and a `diagnosis` that says which access is missing (e.g. "SENTRY_AUTH_TOKEN not configured"), then reply with that in one line.
 
 ## 3. Measure user impact in PostHog
 
