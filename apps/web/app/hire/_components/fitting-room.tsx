@@ -4,7 +4,7 @@ import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { saveHiredRoary } from "@/lib/hired-roary-store";
+import { persistHiredRoary, saveHiredRoary } from "@/lib/hired-roary-store";
 import {
   type Autonomy,
   DEFAULT_JOBS,
@@ -85,7 +85,9 @@ export function FittingRoom() {
   const sign = () => {
     // Snapshot first, before the roar distorts the pose.
     const snapshot = snapshotRef.current?.();
-    saveHiredRoary({ name: displayName, look, personality, jobs, autonomy, snapshot, hiredAt: new Date().toISOString() });
+    const hired = { name: displayName, look, personality, jobs, autonomy, snapshot, hiredAt: new Date().toISOString() };
+    saveHiredRoary(hired);
+    void persistHiredRoary(hired);
     setSignedAt(Date.now());
     setCue({ kind: "roar", at: Date.now() });
     showStage();

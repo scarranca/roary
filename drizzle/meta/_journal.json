@@ -8,6 +8,13 @@
       "when": 1792003225195,
       "tag": "0000_parched_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792013357919,
+      "tag": "0001_modern_penance",
+      "breakpoints": true
     }
   ]
 }
