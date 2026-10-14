@@ -22,6 +22,7 @@ import {
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { cn } from "@/lib/utils";
 import { AgentMessage } from "./agent-message";
+import { TryItCard } from "./try-it-card";
 import { WEB_CHAT_AGENT } from "@/app/eve-agent";
 import { useHiredRoary } from "@/lib/hired-roary-store";
 import { hireContext } from "@/lib/roary-character";
@@ -129,6 +130,11 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
     await agent.send(parts, options);
   };
 
+  const sendTryIt = (text: string) => {
+    void handleSubmit({ files: [], text });
+  };
+  const tryItDisabled = isBusy || isResuming;
+
   const composer = (
     <PromptInput onSubmit={handleSubmit}>
       <PromptInputTextarea
@@ -166,7 +172,7 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
           }
         >
           <ConversationTopFade className="top-16" />
-          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-22 pb-36 sm:px-6">
+          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-32 pb-36 sm:px-6">
             {agent.data.messages.map((message, index) =>
               showPendingThinking &&
               isPendingAssistantShell &&
@@ -193,12 +199,23 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
         </Conversation>
       ) : null}
 
+      {showConversationLayout ? (
+        <div className="absolute top-16 right-0 left-0 z-10 px-4 pt-2 sm:px-6">
+          <TryItCard
+            className="mx-auto max-w-3xl"
+            defaultOpen={false}
+            disabled={tryItDisabled}
+            onSend={sendTryIt}
+          />
+        </div>
+      ) : null}
+
       <div
         className={cn(
           "mx-auto w-full px-4 sm:px-6",
           showConversationLayout
             ? "absolute bottom-0 left-1/2 z-20 max-w-3xl -translate-x-1/2 bg-gradient-to-t from-card via-card to-transparent pt-4 pb-4"
-            : "flex max-w-xl flex-1 flex-col items-center justify-center gap-6 pt-20 pb-8",
+            : "flex min-h-0 max-w-xl flex-1 flex-col items-center justify-center-safe gap-6 overflow-y-auto pt-20 pb-8",
         )}
       >
         {showConversationLayout ? null : (
@@ -208,6 +225,9 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
               Ask about errors, recent launches, or what {agentName} is working on right now
             </p>
           </div>
+        )}
+        {showConversationLayout ? null : (
+          <TryItCard defaultOpen disabled={tryItDisabled} onSend={sendTryIt} />
         )}
         <div className="w-full">{composer}</div>
       </div>
