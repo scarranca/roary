@@ -11,3 +11,4 @@ dist/
 .neon
 .output/
 .vercel
+.claude/worktrees/
