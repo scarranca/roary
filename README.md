@@ -97,9 +97,9 @@ agent/
   lib/
     db.ts                  # Neon Postgres (pg pool + Drizzle)                      ✅
     schema.ts              # incidents, launches                                    ✅
-  sandbox.ts               # Vercel Sandbox on Vercel, just-bash locally            ✅
-  sandbox/workspace/video/ # branded HyperFrames template                           🚧 #31
-apps/web/                  # Hire Roary web app: landing, /desk, /hire fitting room 🚧 #29 #30
+  sandbox/sandbox.ts       # Vercel Sandbox on Vercel, just-bash locally            ✅
+  sandbox/workspace/video/ # branded HyperFrames template (content.json)            ✅
+apps/web/                  # Hire Roary web app: landing, /desk, /hire fitting room ✅
 drizzle/                   # SQL migrations (drizzle-kit)                           ✅
 neon.ts                    # Neon services config (neon deploy)                     ✅
 scripts/db-smoke.ts        # end-to-end DB check                                    ✅

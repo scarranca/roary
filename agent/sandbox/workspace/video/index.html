@@ -1,0 +1,521 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"product","type":"string","label":"Product or repo","description":"Name of the product or owner/repo that shipped the feature.","default":"acme/checkout"},
+    {"id":"title","type":"string","label":"Feature title","description":"Short name of the shipped feature, 2-5 words.","default":"One-tap checkout"},
+    {"id":"tagline","type":"string","label":"Tagline","description":"One sentence on what the feature does for users.","default":"Pay in a single tap with saved cards and Apple Pay."},
+    {"id":"bullet1","type":"string","label":"Bullet 1","description":"First highlight, under 60 characters.","default":"Saved cards appear instantly at checkout"},
+    {"id":"bullet2","type":"string","label":"Bullet 2","description":"Second highlight, under 60 characters.","default":"Apple Pay and Google Pay in one tap"},
+    {"id":"bullet3","type":"string","label":"Bullet 3","description":"Third highlight, under 60 characters.","default":"Smarter retries when a card is declined"},
+    {"id":"metricLabel","type":"string","label":"Metric label","description":"What the before/after numbers measure.","default":"Time to pay"},
+    {"id":"metricBefore","type":"string","label":"Metric before","description":"Value before the change, short (e.g. 48s).","default":"48s"},
+    {"id":"metricAfter","type":"string","label":"Metric after","description":"Value after the change, short (e.g. 9s).","default":"9s"},
+    {"id":"impact","type":"string","label":"Impact line","description":"One line on the user impact.","default":"5x faster checkout for every shopper"},
+    {"id":"authors","type":"string","label":"Authors","description":"Comma-separated GitHub handles of the people who shipped it.","default":"@ana, @luis, @mei"},
+    {"id":"prUrl","type":"string","label":"PR link","description":"Pull request URL without https://.","default":"github.com/acme/checkout/pull/42"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!-- Vendored so renders never depend on a CDN (the sandbox may have a locked-down network). -->
+    <script src="vendor/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("vendor/inter-latin-wght.woff2") format("woff2");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      :root {
+        --bg: #140b05;
+        --bg-2: #2a1407;
+        --orange: #ff8a1f;
+        --amber: #ffb547;
+        --cream: #fff4e6;
+        --muted: #d9b99a;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+        color: var(--cream);
+        background: radial-gradient(120% 90% at 50% 110%, var(--bg-2) 0%, var(--bg) 60%);
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .scene {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 160px;
+      }
+      .glow {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(90px);
+        opacity: 0.55;
+      }
+      #glow-a {
+        width: 900px;
+        height: 900px;
+        left: -200px;
+        top: -260px;
+        background: #ff7a00;
+        opacity: 0.28;
+      }
+      #glow-b {
+        width: 800px;
+        height: 800px;
+        right: -220px;
+        bottom: -300px;
+        background: #ffb547;
+        opacity: 0.22;
+      }
+      #grain {
+        background-image: radial-gradient(rgba(255, 244, 230, 0.05) 1px, transparent 1px);
+        background-size: 6px 6px;
+      }
+      #progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 8px;
+        width: 1920px;
+        background: linear-gradient(90deg, var(--orange), var(--amber));
+        transform-origin: left center;
+      }
+      .brand-chip {
+        position: absolute;
+        top: 56px;
+        left: 72px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--cream);
+      }
+      .brand-chip svg {
+        width: 56px;
+        height: 56px;
+      }
+      .kicker {
+        display: inline-block;
+        padding: 14px 30px;
+        border-radius: 999px;
+        border: 2px solid rgba(255, 138, 31, 0.6);
+        background: rgba(255, 138, 31, 0.12);
+        color: var(--amber);
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      /* Intro */
+      #lion {
+        width: 360px;
+        height: 360px;
+      }
+      #intro-name {
+        margin-top: 36px;
+        font-size: 132px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+      #intro-sub {
+        margin-top: 24px;
+        font-size: 40px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      #intro-sub b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+      /* Title */
+      #title {
+        margin-top: 44px;
+        font-size: 150px;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 1.02;
+        background: linear-gradient(180deg, #fff8ef 0%, #ffd29a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        max-width: 1600px;
+      }
+      #tagline {
+        margin-top: 36px;
+        font-size: 44px;
+        font-weight: 500;
+        color: var(--muted);
+        max-width: 1400px;
+        line-height: 1.3;
+      }
+      /* Bullets */
+      #bullets-head {
+        font-size: 72px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 64px;
+      }
+      .bullet {
+        display: flex;
+        align-items: center;
+        gap: 36px;
+        width: 1300px;
+        padding: 34px 44px;
+        margin: 14px 0;
+        border-radius: 28px;
+        background: rgba(255, 244, 230, 0.06);
+        border: 2px solid rgba(255, 244, 230, 0.1);
+        text-align: left;
+      }
+      .bullet .num {
+        flex: none;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--orange), var(--amber));
+        color: #1a0d04;
+        font-size: 38px;
+        font-weight: 800;
+      }
+      .bullet .txt {
+        font-size: 46px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        line-height: 1.2;
+      }
+      /* Metric */
+      #metric-label {
+        margin-top: 40px;
+        font-size: 48px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      #metric-row {
+        margin-top: 40px;
+        display: flex;
+        align-items: center;
+        gap: 72px;
+      }
+      .metric-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .metric-box .cap {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      #metric-before {
+        font-size: 150px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        color: rgba(255, 244, 230, 0.45);
+        text-decoration: line-through;
+        text-decoration-thickness: 8px;
+        text-decoration-color: rgba(255, 138, 31, 0.7);
+      }
+      #metric-after {
+        font-size: 220px;
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        color: var(--orange);
+        line-height: 1;
+      }
+      #metric-arrow {
+        width: 140px;
+        height: 80px;
+      }
+      #impact {
+        margin-top: 56px;
+        font-size: 50px;
+        font-weight: 700;
+        color: var(--cream);
+      }
+      /* Credits */
+      #credits-head {
+        font-size: 44px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      #authors {
+        margin-top: 48px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        max-width: 1600px;
+      }
+      .author {
+        padding: 22px 40px;
+        border-radius: 999px;
+        background: rgba(255, 244, 230, 0.08);
+        border: 2px solid rgba(255, 181, 71, 0.45);
+        font-size: 56px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #thanks {
+        margin-top: 72px;
+        font-size: 96px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+      #thanks span {
+        color: var(--orange);
+      }
+      /* Outro */
+      #outro-lion {
+        width: 220px;
+        height: 220px;
+      }
+      #outro-name {
+        margin-top: 28px;
+        font-size: 84px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+      #outro-sub {
+        margin-top: 14px;
+        font-size: 36px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      #pr-url {
+        margin-top: 48px;
+        padding: 18px 34px;
+        border-radius: 18px;
+        background: rgba(255, 244, 230, 0.07);
+        font-size: 32px;
+        font-weight: 600;
+        color: var(--amber);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="20" data-width="1920" data-height="1080">
+      <!-- Shared lion mark, referenced with <use>. Lives outside timed clips so it always resolves. -->
+      <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+        <defs>
+          <radialGradient id="mane-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ffb547" />
+            <stop offset="100%" stop-color="#ff7a00" />
+          </radialGradient>
+          <g id="lion-mark">
+            <circle cx="100" cy="100" r="92" fill="url(#mane-grad)" />
+            <g fill="#ff7a00">
+              <circle cx="100" cy="12" r="18" />
+              <circle cx="162" cy="38" r="18" />
+              <circle cx="188" cy="100" r="18" />
+              <circle cx="162" cy="162" r="18" />
+              <circle cx="100" cy="188" r="18" />
+              <circle cx="38" cy="162" r="18" />
+              <circle cx="12" cy="100" r="18" />
+              <circle cx="38" cy="38" r="18" />
+            </g>
+            <circle cx="100" cy="104" r="58" fill="#ffe2b8" />
+            <circle cx="58" cy="62" r="14" fill="#ffe2b8" />
+            <circle cx="142" cy="62" r="14" fill="#ffe2b8" />
+            <circle cx="80" cy="96" r="8" fill="#2a1407" />
+            <circle cx="120" cy="96" r="8" fill="#2a1407" />
+            <path d="M88 116 L112 116 L100 130 Z" fill="#2a1407" />
+            <path d="M84 138 Q100 152 116 138" stroke="#2a1407" stroke-width="6" fill="none" stroke-linecap="round" />
+          </g>
+        </defs>
+      </svg>
+
+      <!-- Persistent background -->
+      <div id="bg" class="clip" data-start="0" data-duration="20" data-track-index="0">
+        <div id="glow-a" class="glow" data-layout-allow-overflow></div>
+        <div id="glow-b" class="glow" data-layout-allow-overflow></div>
+        <div id="grain" class="clip"></div>
+        <div id="progress"></div>
+      </div>
+
+      <!-- Brand chip, visible after the intro -->
+      <div id="chip" class="clip" data-start="3.5" data-duration="15" data-track-index="1">
+        <div class="brand-chip">
+          <svg viewBox="-12 -12 224 224" aria-hidden="true"><use href="#lion-mark" /></svg>
+          Roary
+        </div>
+      </div>
+
+      <!-- 1. Intro -->
+      <section id="s-intro" class="clip scene" data-start="0" data-duration="3.6" data-track-index="2">
+        <svg id="lion" viewBox="-12 -12 224 224" aria-hidden="true">
+          <use href="#lion-mark" />
+        </svg>
+        <div id="intro-name">Roary</div>
+        <div id="intro-sub">has a launch to celebrate at <b id="product">acme/checkout</b></div>
+      </section>
+
+      <!-- 2. Feature title -->
+      <section id="s-title" class="clip scene" data-start="3.5" data-duration="4.1" data-track-index="2">
+        <div class="kicker">Just shipped</div>
+        <h1 id="title">One-tap checkout</h1>
+        <p id="tagline">Pay in a single tap with saved cards and Apple Pay.</p>
+      </section>
+
+      <!-- 3. Bullets -->
+      <section id="s-bullets" class="clip scene" data-start="7.5" data-duration="4.6" data-track-index="2">
+        <h2 id="bullets-head">What's new</h2>
+        <div class="bullet"><div class="num">1</div><div class="txt" id="bullet1">Saved cards appear instantly at checkout</div></div>
+        <div class="bullet"><div class="num">2</div><div class="txt" id="bullet2">Apple Pay and Google Pay in one tap</div></div>
+        <div class="bullet"><div class="num">3</div><div class="txt" id="bullet3">Smarter retries when a card is declined</div></div>
+      </section>
+
+      <!-- 4. Metric / impact -->
+      <section id="s-metric" class="clip scene" data-start="12" data-duration="3.6" data-track-index="2">
+        <div class="kicker">Impact</div>
+        <div id="metric-label">Time to pay</div>
+        <div id="metric-row">
+          <div class="metric-box"><div class="cap">Before</div><div id="metric-before">48s</div></div>
+          <svg id="metric-arrow" viewBox="0 0 140 80" aria-hidden="true">
+            <path d="M6 40 H120 M92 12 L124 40 L92 68" stroke="#ff8a1f" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div class="metric-box"><div class="cap">After</div><div id="metric-after">9s</div></div>
+        </div>
+        <div id="impact">5x faster checkout for every shopper</div>
+      </section>
+
+      <!-- 5. Credits -->
+      <section id="s-credits" class="clip scene" data-start="15.5" data-duration="3.1" data-track-index="2">
+        <div id="credits-head">Shipped by</div>
+        <div id="authors"><div class="author">@ana</div></div>
+        <div id="thanks">Thank you, <span>team</span>.</div>
+      </section>
+
+      <!-- 6. Outro -->
+      <section id="s-outro" class="clip scene" data-start="18.5" data-duration="1.5" data-track-index="2">
+        <svg id="outro-lion" viewBox="-12 -12 224 224" aria-hidden="true"><use href="#lion-mark" /></svg>
+        <div id="outro-name">Roary</div>
+        <div id="outro-sub">Your AI teammate</div>
+        <div id="pr-url">github.com/acme/checkout/pull/42</div>
+      </section>
+    </div>
+
+    <script>
+      // Content comes from HyperFrames variables (render with --variables-file content.json).
+      const v = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const setText = (id, value) => {
+        if (typeof value === "string" && value.trim()) document.getElementById(id).textContent = value.trim();
+      };
+      ["product", "title", "tagline", "bullet1", "bullet2", "bullet3", "metricLabel", "metricBefore", "metricAfter", "impact", "prUrl"].forEach((key) =>
+        setText(key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), v[key]),
+      );
+
+      // Shrink long copy so it never overflows (deterministic: based on length only).
+      const fit = (id, base, perChar, min, threshold) => {
+        const el = document.getElementById(id);
+        const len = el.textContent.length;
+        if (len > threshold) el.style.fontSize = Math.max(min, base - (len - threshold) * perChar) + "px";
+      };
+      fit("title", 150, 3.2, 84, 18);
+      fit("tagline", 44, 0.25, 32, 70);
+      ["bullet1", "bullet2", "bullet3"].forEach((id) => fit(id, 46, 0.4, 32, 48));
+      fit("metric-after", 220, 12, 110, 5);
+      fit("metric-before", 150, 8, 80, 5);
+
+      const authors = (typeof v.authors === "string" && v.authors.trim() ? v.authors : "@ana, @luis, @mei")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((a) => (a.startsWith("@") ? a : "@" + a));
+      document.getElementById("authors").innerHTML = "";
+      authors.forEach((handle) => {
+        const chip = document.createElement("div");
+        chip.className = "author";
+        chip.textContent = handle;
+        document.getElementById("authors").appendChild(chip);
+      });
+
+      const tl = gsap.timeline({ paused: true });
+      const ease = "power3.out";
+
+      // Background: slow drift for the whole video, plus a progress bar.
+      tl.to("#glow-a", { x: 260, y: 140, duration: 20, ease: "sine.inOut" }, 0);
+      tl.to("#glow-b", { x: -240, y: -120, duration: 20, ease: "sine.inOut" }, 0);
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 20, ease: "none" }, 0);
+      tl.from("#chip .brand-chip", { opacity: 0, x: -30, duration: 0.6, ease }, 3.6);
+
+      // 1. Intro
+      tl.from("#lion", { scale: 0.2, rotation: -25, opacity: 0, duration: 0.9, ease: "back.out(1.8)" }, 0.15);
+      tl.to("#lion", { rotation: 6, duration: 2.4, ease: "sine.inOut" }, 1.05);
+      tl.from("#intro-name", { y: 60, opacity: 0, duration: 0.7, ease }, 0.6);
+      tl.from("#intro-sub", { y: 30, opacity: 0, duration: 0.7, ease }, 0.95);
+      tl.to("#s-intro", { opacity: 0, scale: 1.06, duration: 0.45, ease: "power2.in" }, 3.1);
+
+      // 2. Title
+      tl.from("#s-title .kicker", { y: -30, opacity: 0, duration: 0.5, ease }, 3.6);
+      tl.from("#title", { y: 80, opacity: 0, scale: 0.94, duration: 0.8, ease }, 3.75);
+      tl.from("#tagline", { y: 30, opacity: 0, duration: 0.6, ease }, 4.2);
+      tl.to("#title", { scale: 1.03, duration: 2.5, ease: "sine.inOut" }, 4.6);
+      tl.to("#s-title", { opacity: 0, y: -40, duration: 0.45, ease: "power2.in" }, 7.1);
+
+      // 3. Bullets
+      tl.from("#bullets-head", { y: 40, opacity: 0, duration: 0.5, ease }, 7.6);
+      tl.from("#s-bullets .bullet", { x: -120, opacity: 0, duration: 0.6, ease, stagger: 0.35 }, 7.9);
+      tl.from("#s-bullets .num", { scale: 0, duration: 0.5, ease: "back.out(2)", stagger: 0.35 }, 8.05);
+      tl.to("#s-bullets", { opacity: 0, y: -40, duration: 0.45, ease: "power2.in" }, 11.6);
+
+      // 4. Metric
+      tl.from("#s-metric .kicker", { y: -30, opacity: 0, duration: 0.5, ease }, 12.1);
+      tl.from("#metric-label", { opacity: 0, duration: 0.5, ease }, 12.2);
+      tl.from("#metric-before", { y: 40, opacity: 0, duration: 0.5, ease }, 12.35);
+      tl.from("#metric-arrow", { x: -40, opacity: 0, duration: 0.5, ease }, 12.75);
+      tl.from("#metric-after", { scale: 0.4, opacity: 0, duration: 0.7, ease: "back.out(1.7)" }, 13.0);
+      tl.from("#impact", { y: 30, opacity: 0, duration: 0.6, ease }, 13.5);
+      tl.to("#s-metric", { opacity: 0, scale: 0.97, duration: 0.45, ease: "power2.in" }, 15.1);
+
+      // 5. Credits
+      tl.from("#credits-head", { y: -20, opacity: 0, duration: 0.5, ease }, 15.6);
+      tl.from("#authors .author", { y: 50, opacity: 0, scale: 0.9, duration: 0.55, ease: "back.out(1.6)", stagger: 0.15 }, 15.8);
+      tl.from("#thanks", { y: 40, opacity: 0, duration: 0.6, ease }, 16.6);
+      tl.to("#s-credits", { opacity: 0, duration: 0.4, ease: "power2.in" }, 18.15);
+
+      // 6. Outro
+      tl.from("#outro-lion", { scale: 0.3, opacity: 0, duration: 0.6, ease: "back.out(1.8)" }, 18.55);
+      tl.from(["#outro-name", "#outro-sub", "#pr-url"], { y: 30, opacity: 0, duration: 0.5, ease, stagger: 0.12 }, 18.7);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

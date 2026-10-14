@@ -222,6 +222,8 @@ Each workstream should be mergeable on its own. Keep PRs small and say which wor
   - **Local / sandbox (no key):** `npx hyperframes render --output launch.mp4`. Use `--quality draft` while iterating. This needs FFmpeg.
   - **Cloud:** `hyperframes cloud render --callback-url <url> --no-wait` with `HEYGEN_API_KEY`.
 - Run `npx hyperframes lint` and `npx hyperframes check` before rendering.
+- **How Roary renders (verified):** `render_launch_video` → `agent/lib/launch-video.ts` opens a dedicated Vercel Sandbox (node22, Chromium libs, `hyperframes`, `ffmpeg-static`; same recipe as HeyGen's `hyperframes-vercel-template`), renders with `--variables-file content.json`, uploads to Blob store `roary-videos`, and sets `launches.videoUrl`. ~90-120s. `LAUNCH_VIDEO_SNAPSHOT_ID` (set in Vercel) skips setup; rebuild it with `scripts/create-launch-video-snapshot.ts` if you change the toolchain. Prove the path from your laptop with `npx tsx --env-file=.env.local scripts/launch-video-smoke.ts`.
+- Template copy slots are declared in `data-composition-variables` in `video/index.html`. GSAP and the font are vendored in `video/vendor/`; keep the template free of network fetches.
 - HyperFrames ships agent skills, including `/pr-to-video` and `/product-launch-video`. Use them while developing templates: `npx skills add heygen-com/hyperframes`. Its docs index is https://hyperframes.heygen.com/llms.txt.
 
 ## Roary's runtime personality (summary, full version in `agent/instructions.md`)
@@ -255,7 +257,7 @@ npx hyperframes preview / render / lint / check
 
 - GitHub webhooks and `@mentions` only reach **deployed** URLs. Use a preview deployment to test them.
 - The local dev server runs at `http://127.0.0.1:2000` (eve v0.79).
-- `agent/sandbox.ts` uses **just-bash** locally (no Docker/VM needed) and **Vercel Sandbox** on Vercel. just-bash can't run native binaries, so FFmpeg/HyperFrames renders only work in Vercel Sandbox, or locally outside eve via `npx hyperframes render`.
+- `agent/sandbox/sandbox.ts` (not `agent/sandbox.ts`: once `agent/sandbox/` exists eve ignores the top-level file) uses **just-bash** locally (no Docker/VM needed) and **Vercel Sandbox** on Vercel. just-bash can't run native binaries, so FFmpeg/HyperFrames renders only work in Vercel Sandbox, or locally outside eve via `npx hyperframes render`.
 - Without `vercel link && vercel env pull` (or `/login` in the eve TUI), model calls fail with "The model connection is unavailable".
 - We're on Vercel: every PR gets a **preview deployment**. Use it for anything webhook-driven.
 - eve schedules become **Vercel Cron Jobs** in UTC. Write cron times in UTC, not local time.
