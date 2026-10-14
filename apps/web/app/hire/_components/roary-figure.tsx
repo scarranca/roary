@@ -82,7 +82,7 @@ function Head({
   readonly logo?: string;
   readonly logoPatch?: string;
   readonly blinkRef: React.RefObject<THREE.Group | null>;
-  readonly mouthRef: React.RefObject<THREE.Mesh | null>;
+  readonly mouthRef: React.RefObject<THREE.Group | null>;
 }) {
   const [sx, sy, sz] = HEAD_SIZE[character.head.shape];
   const faceZ = sz - 0.04;
@@ -172,15 +172,22 @@ function Muzzle({
 }: {
   readonly character: Character;
   readonly faceZ: number;
-  readonly mouthRef: React.RefObject<THREE.Mesh | null>;
+  readonly mouthRef: React.RefObject<THREE.Group | null>;
 }) {
   const { kind, color } = character.muzzle;
   const y = -0.2;
+  // A resting smile; the open mouth only shows while roaring. Children order matters to the animation.
   const mouth = (
-    <mesh position={[0, y - 0.14, faceZ + 0.12]} ref={mouthRef} scale={[1, 0.05, 1]}>
-      <sphereGeometry args={[0.13, 24, 16]} />
-      <meshStandardMaterial color="#3a1010" roughness={0.8} />
-    </mesh>
+    <group position={[0, y - 0.12, faceZ + (kind === "none" ? 0.02 : 0.12)]} ref={mouthRef}>
+      <mesh rotation={[0, 0, Math.PI]}>
+        <torusGeometry args={[0.075, 0.018, 8, 24, Math.PI]} />
+        <meshStandardMaterial color="#2a1a14" roughness={0.6} />
+      </mesh>
+      <mesh position={[0, -0.02, 0]} scale={[1, 0.001, 1]}>
+        <sphereGeometry args={[0.13, 24, 16]} />
+        <meshStandardMaterial color="#3a1010" roughness={0.8} />
+      </mesh>
+    </group>
   );
   if (kind === "none") return mouth;
   if (kind === "beak") {
@@ -549,17 +556,20 @@ function GearPiece({ gear, accent }: { readonly gear: Gear; readonly accent: str
   );
 }
 
-export type FigureCue = { kind: "pop" | "roar"; at: number };
+export type FigureCue = { kind: "pop" | "roar" | "poke"; at: number };
 
 export function RoaryFigure({
   look,
   cue,
   gear,
   energy = 0.5,
+  reducedMotion = false,
 }: {
   readonly look: RoaryLook;
   readonly cue?: FigureCue;
   readonly gear?: Gear;
+  /** Holds still: no bounce, no cursor tracking, no spin; reactions become a small pop. */
+  readonly reducedMotion?: boolean;
   /** 0 = calm senior, 1 = hype buddy. Scales the idle motion. */
   readonly energy?: number;
 }) {
@@ -567,7 +577,7 @@ export function RoaryFigure({
   const body = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
   const blink = useRef<THREE.Group>(null);
-  const mouth = useRef<THREE.Mesh>(null);
+  const mouth = useRef<THREE.Group>(null);
   const tail = useRef<THREE.Group>(null);
   const pop = useRef(0);
   const roar = useRef(0);
@@ -582,13 +592,15 @@ export function RoaryFigure({
   }, [character, outfit, outfitColor, headwear, logo, gear]);
   useEffect(() => {
     if (!cue) return;
-    if (cue.kind === "roar") roar.current = 1;
+    if (cue.kind === "roar") roar.current = reducedMotion ? 0 : 1;
+    else if (cue.kind === "poke") squash.current = 1;
     else pop.current = 1;
   }, [cue]);
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
-    const bounce = 0.02 + energy * 0.05;
+    const motion = reducedMotion ? 0 : 1;
+    const bounce = (0.02 + energy * 0.05) * motion;
     if (!root.current || !body.current || !head.current) return;
 
     pop.current = Math.max(0, pop.current - delta * 1.6);
@@ -599,16 +611,16 @@ export function RoaryFigure({
     const roarCurve = Math.sin(Math.min(1, (1 - roar.current) * 1.4) * Math.PI) * (roar.current > 0 ? 1 : 0);
 
     root.current.position.y = Math.abs(Math.sin(t * (1.2 + energy * 1.6))) * bounce + popCurve * 0.25;
-    root.current.rotation.y = pop.current * Math.PI * 2 * pop.current;
+    root.current.rotation.y = pop.current * Math.PI * 2 * pop.current * motion;
     const sq = squash.current * 0.18;
     root.current.scale.set(1 + sq, 1 - sq + roarCurve * 0.08, 1 + sq);
-    body.current.scale.y = 1 + Math.sin(t * 2) * 0.015;
+    body.current.scale.y = 1 + Math.sin(t * 2) * 0.015 * motion;
 
-    const lookX = state.pointer.x * 0.55;
-    const lookY = -state.pointer.y * 0.3 - roarCurve * 0.45;
+    const lookX = state.pointer.x * 0.55 * motion;
+    const lookY = (-state.pointer.y * 0.3 - roarCurve * 0.45) * motion;
     head.current.rotation.y = THREE.MathUtils.damp(head.current.rotation.y, lookX, 4, delta);
     head.current.rotation.x = THREE.MathUtils.damp(head.current.rotation.x, lookY, 4, delta);
-    head.current.rotation.z = Math.sin(t * 0.9) * 0.03 * (0.5 + energy);
+    head.current.rotation.z = Math.sin(t * 0.9) * 0.03 * (0.5 + energy) * motion;
 
     if (blink.current) {
       if (t > nextBlink.current) nextBlink.current = t + 2.5 + Math.random() * 3;
@@ -616,9 +628,11 @@ export function RoaryFigure({
       blink.current.scale.y = THREE.MathUtils.damp(blink.current.scale.y, closing, 30, delta);
     }
     if (mouth.current) {
-      mouth.current.scale.y = THREE.MathUtils.damp(mouth.current.scale.y, 0.05 + roarCurve * 1.3, 12, delta);
+      const [smile, open] = mouth.current.children;
+      smile.scale.setScalar(THREE.MathUtils.damp(smile.scale.x, roarCurve > 0.1 ? 0.001 : 1, 12, delta));
+      open.scale.y = THREE.MathUtils.damp(open.scale.y, 0.001 + roarCurve * 1.3, 12, delta);
     }
-    if (tail.current) tail.current.rotation.y = Math.sin(t * (1.5 + energy * 2)) * 0.35;
+    if (tail.current) tail.current.rotation.y = Math.sin(t * (1.5 + energy * 2)) * 0.35 * motion;
   });
 
   return (

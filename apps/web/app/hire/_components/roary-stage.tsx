@@ -2,7 +2,7 @@
 
 import { ContactShadows, Environment, Lightformer, PresentationControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { Suspense } from "react";
+import { type RefObject, Suspense } from "react";
 import type { RoaryLook } from "@/lib/roary-character";
 import { type FigureCue, type Gear, RoaryFigure } from "./roary-figure";
 
@@ -12,17 +12,29 @@ export default function RoaryStage({
   cue,
   gear,
   energy,
+  spin = 0,
+  reducedMotion = false,
+  snapshotRef,
 }: {
   readonly look: RoaryLook;
   readonly cue?: FigureCue;
   readonly gear?: Gear;
   readonly energy?: number;
+  /** Extra turn in radians, from the keyboard (arrow keys on the stage). */
+  readonly spin?: number;
+  readonly reducedMotion?: boolean;
+  /** Filled with a function that returns a square PNG of the figure. */
+  readonly snapshotRef?: RefObject<(() => string | undefined) | null>;
 }) {
   return (
     <Canvas
       camera={{ fov: 30, position: [0, 1.2, 8.8] }}
       dpr={[1, 1.75]}
-      onCreated={({ camera }) => camera.lookAt(0, 0.3, 0)}
+      gl={{ preserveDrawingBuffer: true }}
+      onCreated={({ camera, gl }) => {
+        camera.lookAt(0, 0.3, 0);
+        if (snapshotRef) snapshotRef.current = () => snapshotFigure(gl.domElement);
+      }}
       shadows
     >
       <ambientLight intensity={0.55} />
@@ -42,9 +54,9 @@ export default function RoaryStage({
         polar={[-0.15, 0.2]}
         snap
       >
-        <group position={[0, -1.05, 0]}>
+        <group position={[0, -1.05, 0]} rotation-y={spin}>
           <Suspense fallback={null}>
-            <RoaryFigure cue={cue} energy={energy} gear={gear} look={look} />
+            <RoaryFigure cue={cue} energy={energy} gear={gear} look={look} reducedMotion={reducedMotion} />
           </Suspense>
           <mesh position={[0, -0.05, 0]} receiveShadow>
             <cylinderGeometry args={[1.45, 1.5, 0.1, 64]} />
@@ -60,4 +72,17 @@ export default function RoaryStage({
       <ContactShadows blur={2.4} far={3} opacity={0.5} position={[0, -1.1, 0]} scale={7} />
     </Canvas>
   );
+}
+
+/** Crops the figure out of the stage into a 320px square PNG (transparent background). */
+function snapshotFigure(source: HTMLCanvasElement) {
+  const size = 320;
+  const out = document.createElement("canvas");
+  out.width = size;
+  out.height = size;
+  const context = out.getContext("2d");
+  if (!context) return undefined;
+  const crop = Math.min(source.width, source.height * 0.86);
+  context.drawImage(source, (source.width - crop) / 2, source.height * 0.02, crop, crop, 0, 0, size, size);
+  return out.toDataURL("image/png");
 }

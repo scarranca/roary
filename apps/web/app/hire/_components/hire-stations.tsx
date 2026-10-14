@@ -1,17 +1,12 @@
 "use client";
 
-import { EraserIcon } from "lucide-react";
+import { ArrowRightIcon, EraserIcon } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { type Autonomy, type Jobs, type Personality, speciesEmoji } from "@/lib/roary-character";
 import type { Gear } from "./roary-figure";
 import { Field, OptionGrid } from "./stations";
-
-export type Personality = { playful: number; detailed: number; proactive: number; emoji: number };
-export type Jobs = { triage: boolean; fixPrs: boolean; launchReview: boolean; launchVideo: boolean };
-export type Autonomy = "suggest" | "open_prs";
-
-export const DEFAULT_PERSONALITY: Personality = { playful: 55, detailed: 50, proactive: 55, emoji: 35 };
-export const DEFAULT_JOBS: Jobs = { triage: true, fixPrs: true, launchReview: true, launchVideo: true };
 
 const PRESETS: { label: string; value: Personality }[] = [
   { label: "Calm senior", value: { playful: 15, detailed: 70, proactive: 35, emoji: 0 } },
@@ -31,24 +26,27 @@ export function energyFrom(p: Personality) {
   return (p.playful * 0.7 + p.proactive * 0.3) / 100;
 }
 
-/** A templated incident message in this Roary's voice, until the live agent writes it (#16). */
-export function sampleMessage(p: Personality, name: string, autonomy: Autonomy) {
+/**
+ * A templated incident message in this Roary's voice. It describes the demo
+ * shop's real bug (bundle discount, 8d41418) so the preview matches the live run.
+ */
+export function sampleMessage(p: Personality, name: string, autonomy: Autonomy, species: string) {
   const emoji = (e: string) => (p.emoji > 50 ? ` ${e}` : "");
   const opener = p.playful > 66 ? `Heads up, team!${emoji("👀")}` : p.playful > 33 ? "Heads up:" : "For awareness:";
-  const core = "checkout errors jumped after the 2:10 deploy. 38 people hit it in the last hour.";
+  const core = "checkout fails for anyone with a single item in their cart since the bundle-discount deploy.";
   const detail =
     p.detailed > 60
-      ? " What I saw: TypeError: coupon is undefined in applyDiscount(). What I think: the coupon change in a41c9e2 skips the empty-cart case."
+      ? " What I saw: TypeError: Cannot read properties of undefined (reading 'lineTotal') in priceCart(). What I think: 8d41418 reads lines[1] without checking it exists. Confidence: high."
       : p.detailed > 30
-        ? " It looks like the coupon change in a41c9e2."
+        ? " It looks like the bundle discount in 8d41418."
         : "";
   const action =
     autonomy === "open_prs" && p.proactive > 50
-      ? ` I already opened PR #41 with a fix and a test. A human still merges.${emoji("🔧")}`
+      ? ` I opened a PR with a guard and a test. A human still merges.${emoji("🔧")}`
       : p.proactive > 50
         ? ` Want me to open a fix PR?${emoji("🔧")}`
         : " Let me know if you want me to dig in.";
-  const signoff = p.playful > 80 ? ` ${name} is on it!${emoji("🦁")}` : "";
+  const signoff = p.playful > 80 ? ` ${name} is on it!${emoji(speciesEmoji(species))}` : "";
   return `${opener} ${core}${detail}${action}${signoff}`;
 }
 
@@ -189,17 +187,21 @@ export function JobsStation({
 }
 
 export function OfferStation({
+  name,
   summary,
   signed,
   onSign,
 }: {
+  readonly name: string;
   readonly summary: { label: string; value: string }[];
   readonly signed: boolean;
   readonly onSign: () => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+  const typedId = useId();
   const [hasInk, setHasInk] = useState(false);
+  const [typed, setTyped] = useState("");
 
   useEffect(() => {
     const el = canvas.current;
@@ -221,15 +223,28 @@ export function OfferStation({
     return [event.clientX - rect.left, event.clientY - rect.top] as const;
   };
 
-  const clear = () => {
+  const clearInk = () => {
     const el = canvas.current;
     el?.getContext("2d")?.clearRect(0, 0, el.width, el.height);
     setHasInk(false);
   };
 
+  // Typing a name signs too, so the offer works without a pointer.
+  const typeSignature = (value: string) => {
+    setTyped(value);
+    const el = canvas.current;
+    const ctx = el?.getContext("2d");
+    if (!el || !ctx) return;
+    ctx.clearRect(0, 0, el.width, el.height);
+    ctx.font = "italic 600 34px 'Brush Script MT', 'Segoe Script', cursive";
+    ctx.fillStyle = "#0a0a0a";
+    ctx.fillText(value, 16, el.clientHeight / 2 + 12);
+    setHasInk(value.trim().length > 0);
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="plate flex flex-col gap-4 bg-card p-5">
+      <div className="plate relative flex flex-col gap-4 bg-card p-5">
         <div className="flex items-center justify-between gap-3 border-ink border-b-2 pb-3 font-mono text-xs uppercase">
           <span>Offer of employment · Roary-01</span>
           <span aria-hidden className="barcode block h-4 w-20" />
@@ -242,60 +257,90 @@ export function OfferStation({
             </div>
           ))}
         </dl>
+        {signed ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute right-4 bottom-4 rotate-[-8deg] border-[3px] border-safety bg-card/80 px-3 py-1 font-mono text-safety text-sm uppercase outline-2 outline-safety outline-offset-2"
+          >
+            Signed · hired
+          </span>
+        ) : null}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-muted-foreground text-xs uppercase">Sign here · your team</span>
+      {signed ? (
+        <Link
+          className="plate inline-flex items-center justify-center gap-3 bg-safety px-6 py-4 font-mono text-ink text-lg uppercase transition-transform hover:-translate-y-0.5"
+          href="/desk"
+        >
+          Meet {name} at the desk
+          <ArrowRightIcon className="size-5" />
+        </Link>
+      ) : (
+        <>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-muted-foreground text-xs uppercase">Sign here · your team</span>
+              <button
+                className="inline-flex items-center gap-1 font-mono text-xs uppercase underline disabled:opacity-40"
+                disabled={!hasInk}
+                onClick={() => {
+                  clearInk();
+                  setTyped("");
+                }}
+                type="button"
+              >
+                <EraserIcon className="size-3.5" />
+                Clear
+              </button>
+            </div>
+            <canvas
+              aria-hidden
+              className="h-32 w-full cursor-crosshair touch-none rounded-[3px] border-2 border-ink bg-card"
+              onPointerDown={(event) => {
+                const ctx = canvas.current?.getContext("2d");
+                if (!ctx) return;
+                drawing.current = true;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                const [x, y] = point(event);
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+              }}
+              onPointerMove={(event) => {
+                if (!drawing.current) return;
+                const ctx = canvas.current?.getContext("2d");
+                if (!ctx) return;
+                const [x, y] = point(event);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                setHasInk(true);
+              }}
+              onPointerUp={() => {
+                drawing.current = false;
+              }}
+              ref={canvas}
+            />
+            <label className="mt-1 font-mono text-muted-foreground text-xs uppercase" htmlFor={typedId}>
+              Or type your name to sign
+            </label>
+            <input
+              autoComplete="name"
+              className="rounded-[3px] border-2 border-ink bg-card px-3 py-2 font-mono text-sm outline-none focus-visible:outline-2 focus-visible:outline-safety"
+              id={typedId}
+              onChange={(event) => typeSignature(event.target.value)}
+              value={typed}
+            />
+          </div>
+
           <button
-            className="inline-flex items-center gap-1 font-mono text-xs uppercase underline disabled:opacity-40"
-            disabled={!hasInk || signed}
-            onClick={clear}
+            className="plate inline-flex items-center justify-center gap-3 bg-safety px-6 py-4 font-mono text-ink text-lg uppercase transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-label disabled:text-muted-foreground"
+            disabled={!hasInk}
+            onClick={onSign}
             type="button"
           >
-            <EraserIcon className="size-3.5" />
-            Clear
+            {hasInk ? "Sign the offer letter" : "Sign above to hire"}
           </button>
-        </div>
-        <canvas
-          aria-label="Signature pad. Draw your signature with a finger or mouse."
-          className={cn(
-            "h-32 w-full touch-none rounded-[3px] border-2 border-ink bg-card",
-            signed ? "pointer-events-none" : "cursor-crosshair",
-          )}
-          onPointerDown={(event) => {
-            const ctx = canvas.current?.getContext("2d");
-            if (!ctx) return;
-            drawing.current = true;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            const [x, y] = point(event);
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-          }}
-          onPointerMove={(event) => {
-            if (!drawing.current) return;
-            const ctx = canvas.current?.getContext("2d");
-            if (!ctx) return;
-            const [x, y] = point(event);
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            setHasInk(true);
-          }}
-          onPointerUp={() => {
-            drawing.current = false;
-          }}
-          ref={canvas}
-        />
-      </div>
-
-      <button
-        className="plate inline-flex items-center justify-center gap-3 bg-safety px-6 py-4 font-mono text-ink text-lg uppercase transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40"
-        disabled={!hasInk || signed}
-        onClick={onSign}
-        type="button"
-      >
-        {signed ? "Signed · welcome to the team" : "Sign the offer letter"}
-      </button>
+        </>
+      )}
     </div>
   );
 }

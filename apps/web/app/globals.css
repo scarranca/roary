@@ -113,6 +113,12 @@ body {
   outline-offset: 3px;
 }
 
+/* Selected controls are already orange: switch their focus ring to ink so it stays visible. */
+[aria-pressed="true"]:focus-visible,
+.bg-safety:focus-visible {
+  outline-color: var(--ink);
+}
+
 a {
   text-underline-offset: 0.25em;
   text-decoration-thickness: 2px;

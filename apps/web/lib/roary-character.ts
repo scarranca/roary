@@ -75,6 +75,44 @@ export type RoaryLook = {
 
 export type Preset = { id: string; label: string; character: Character };
 
+// The rest of a hire. Shared with the agent side (#15 / #16), so keep it free of UI code.
+export type Personality = { playful: number; detailed: number; proactive: number; emoji: number };
+export type Jobs = { triage: boolean; fixPrs: boolean; launchReview: boolean; launchVideo: boolean };
+export type Autonomy = "suggest" | "open_prs";
+
+export const DEFAULT_PERSONALITY: Personality = { playful: 55, detailed: 50, proactive: 55, emoji: 35 };
+export const DEFAULT_JOBS: Jobs = { triage: true, fixPrs: true, launchReview: true, launchVideo: true };
+
+/** Everything a team chose in the fitting room. */
+export type HiredRoary = {
+  name: string;
+  look: RoaryLook;
+  personality: Personality;
+  jobs: Jobs;
+  autonomy: Autonomy;
+  /** PNG data URL of the figure, taken when the offer letter was signed. */
+  snapshot?: string;
+  hiredAt: string;
+};
+
+const SPECIES_EMOJI: [RegExp, string][] = [
+  [/lion/i, "🦁"],
+  [/fox/i, "🦊"],
+  [/bear/i, "🐻"],
+  [/bunny|rabbit/i, "🐰"],
+  [/robot|bot/i, "🤖"],
+  [/frog|toad/i, "🐸"],
+  [/cat|kitten/i, "🐱"],
+  [/dog|puppy/i, "🐶"],
+  [/owl|bird/i, "🦉"],
+  [/penguin/i, "🐧"],
+];
+
+/** An emoji for the character, used in sample messages; ✨ when we can't tell. */
+export function speciesEmoji(species: string) {
+  return SPECIES_EMOJI.find(([pattern]) => pattern.test(species))?.[1] ?? "✨";
+}
+
 const lion: Character = {
   species: "lion",
   head: { shape: "round", color: "#f2c27a" },
@@ -177,3 +215,27 @@ export const DEFAULT_LOOK: RoaryLook = {
   accentColor: "#ff5a00",
   headwear: "none",
 };
+
+const level = (value: number, low: string, high: string) =>
+  value < 34 ? `mostly ${low}` : value > 66 ? `very ${high}` : `balanced between ${low} and ${high}`;
+
+/**
+ * Turns a hire into context for the agent, sent with every chat turn (eve's
+ * clientContext). Roary's instructions already say to follow what the team
+ * chose at hire; the guardrails stay the same.
+ */
+export function hireContext(hired: HiredRoary): string {
+  const { name, look, personality: p, jobs, autonomy } = hired;
+  const on = [
+    jobs.triage && "triage errors",
+    jobs.fixPrs && "open fix PRs",
+    jobs.launchReview && "review launches",
+    jobs.launchVideo && "make launch videos",
+  ].filter(Boolean);
+  return [
+    `The team hired you in the fitting room. Your name is ${name}, a ${look.character.species}. Introduce yourself with that name.`,
+    `Voice: ${level(p.playful, "professional", "playful")}; ${level(p.detailed, "concise", "detailed")}; ${level(p.proactive, "quiet", "proactive")}. Emoji: ${p.emoji < 20 ? "none" : p.emoji > 66 ? "plenty" : "a few"}.`,
+    `Jobs you were hired for: ${on.length ? on.join(", ") : "none yet"}. For work outside these, offer to help but say it is not in your job description.`,
+    `When you find a fix: ${autonomy === "open_prs" ? "you may open the pull request" : "suggest the patch and ask before opening a pull request"}. Humans always merge.`,
+  ].join("\n");
+}

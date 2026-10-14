@@ -8,7 +8,7 @@ const SAMPLE_ITEMS: { id: string; kind: "Incident" | "Launch"; title: string; de
     id: "ROARY-12",
     kind: "Incident",
     title: "Checkout crash",
-    detail: "coupon is undefined · 38 people affected · suspect a41c9e2",
+    detail: "single-item carts · lines[1] is undefined · suspect 8d41418",
     status: "diagnosed",
   },
   {
