@@ -108,8 +108,11 @@ npm run db:migrate       # apply drizzle/ migrations
 npx tsx --env-file=.env.local scripts/db-smoke.ts   # prove the DB works
 
 # 3. Connect the integrations (one time per project)
-vercel connect create sentry   && vercel connect attach <uid>
-vercel connect create posthog  && vercel connect attach <uid>
+# Sentry and GitHub are already created in roary-hack (UIDs sentry/sentry, github/roary).
+# From scratch: create, then attach the UID it prints (not the --name).
+vercel connect create sentry  --connection-method mcp --name sentry  --yes   # → sentry/sentry
+# PostHog: no Connect (OAuth exchange fails). Set POSTHOG_API_KEY instead (personal API key, "MCP Server" preset)
+vercel connect attach sentry/sentry --yes
 vercel connect create github --name github/roary
 vercel connect attach github/roary --triggers --trigger-path /eve/v1/github
 
@@ -149,6 +152,7 @@ vercel deploy            # preview: use this to test webhooks / @mentions
 | `VERCEL_OIDC_TOKEN` | AI Gateway + Vercel Connect | `vercel env pull` |
 | `DATABASE_URL` | App queries (pooled Neon connection) | `neon env pull` |
 | `DATABASE_URL_UNPOOLED` | Migrations (direct connection) | `neon env pull` |
+| `POSTHOG_API_KEY` | PostHog MCP (app-level personal API key) | PostHog → Settings → Personal API keys |
 | `BLOB_READ_WRITE_TOKEN` | Uploading rendered launch videos | Added when you connect a Vercel Blob store |
 | `HEYGEN_API_KEY` | *Optional.* HyperFrames cloud render (local render needs no key) | HeyGen dashboard |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | `eve remote` against protected deployments | Vercel project settings |
