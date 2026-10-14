@@ -90,6 +90,25 @@ function readAsDataUrl(file: File) {
   });
 }
 
+/** Shrinks a photo to fit 1024px as JPEG so phone pictures stay far below upload limits. */
+async function shrinkForUpload(dataUrl: string) {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  const max = 1024;
+  const scale = Math.min(1, max / Math.max(image.naturalWidth || max, image.naturalHeight || max));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round((image.naturalWidth || max) * scale);
+  canvas.height = Math.round((image.naturalHeight || max) * scale);
+  const context = canvas.getContext("2d");
+  if (!context) return dataUrl;
+  // JPEG has no transparency: put logos with alpha on white instead of black.
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
 function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Character) => void }) {
   const inputId = useId();
   const [state, setState] = useState<{ status: "idle" | "working" | "error"; preview?: string; error?: string }>({
@@ -98,20 +117,24 @@ function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Chara
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
-    const image = await readAsDataUrl(file);
-    setState({ status: "working", preview: image });
+    const original = await readAsDataUrl(file);
+    setState({ status: "working", preview: original });
     try {
+      const image = await shrinkForUpload(original);
       const response = await fetch("/api/character", {
         body: JSON.stringify({ image }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const body = (await response.json()) as { character?: Character; error?: string };
-      if (!response.ok || !body.character) throw new Error(body.error ?? "Something went wrong.");
+      // Platform errors (413, 504) come back as HTML, not JSON.
+      const body = (await response.json().catch(() => ({}))) as { character?: Character; error?: string };
+      if (!response.ok || !body.character) {
+        throw new Error(body.error ?? `Roary couldn't read that picture (error ${response.status}). Try a smaller one.`);
+      }
       onCharacter(body.character);
-      setState({ status: "idle", preview: image });
+      setState({ status: "idle", preview: original });
     } catch (error) {
-      setState({ status: "error", preview: image, error: error instanceof Error ? error.message : String(error) });
+      setState({ status: "error", preview: original, error: error instanceof Error ? error.message : String(error) });
     }
   };
 
@@ -119,7 +142,7 @@ function PictureToToy({ onCharacter }: { readonly onCharacter: (character: Chara
     <div className="flex flex-col gap-2">
       <label
         className={cn(
-          "flex cursor-pointer items-center gap-3 rounded-[3px] border-2 border-ink border-dashed p-3 hover:bg-label",
+          "flex cursor-pointer items-center gap-3 rounded-[3px] border-2 border-ink border-dashed p-3 hover:bg-label has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-safety has-[:focus-visible]:outline-offset-2",
           state.status === "working" ? "bg-label" : "bg-card",
         )}
         htmlFor={inputId}
@@ -288,7 +311,7 @@ export function FitStation({
           </div>
         ) : (
           <label
-            className="flex cursor-pointer items-center justify-between gap-3 rounded-[3px] border-2 border-ink border-dashed bg-card p-4 font-mono text-xs uppercase hover:bg-label"
+            className="flex cursor-pointer items-center justify-between gap-3 rounded-[3px] border-2 border-ink border-dashed bg-card p-4 font-mono text-xs uppercase hover:bg-label has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-safety has-[:focus-visible]:outline-offset-2"
             htmlFor={uploadId}
           >
             <span>Drop your startup's logo · SVG or PNG</span>

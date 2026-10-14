@@ -8,7 +8,8 @@ const NAV = [
   { href: "/desk", label: "Desk", wide: false },
 ] as const;
 
-export function SiteHeader() {
+/** `hideHire` drops the Hire CTA on pages that already are the hiring flow. */
+export function SiteHeader({ hideHire = false }: { readonly hideHire?: boolean }) {
   return (
     <header className="border-ink border-b-2 bg-background">
       <div className="mx-auto flex h-18 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -27,13 +28,15 @@ export function SiteHeader() {
               {label}
             </Link>
           ))}
-          <Link
-            className="plate ml-1 inline-flex items-center gap-2 bg-safety px-4 py-2 font-mono text-sm text-ink uppercase transition-transform hover:-translate-y-px"
-            href="/hire"
-          >
-            Hire Roary
-            <ArrowRightIcon className="size-4" />
-          </Link>
+          {hideHire ? null : (
+            <Link
+              className="plate ml-1 inline-flex items-center gap-2 bg-safety px-4 py-2 font-mono text-sm text-ink uppercase transition-transform hover:-translate-y-px"
+              href="/hire"
+            >
+              Hire Roary
+              <ArrowRightIcon className="size-4" />
+            </Link>
+          )}
         </nav>
       </div>
     </header>

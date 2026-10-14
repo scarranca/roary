@@ -3,22 +3,20 @@
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { type CSSProperties, useState } from "react";
-import { DEFAULT_LOOK, PRESETS, type RoaryLook } from "@/lib/roary-character";
-import { cn } from "@/lib/utils";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { saveHiredRoary } from "@/lib/hired-roary-store";
 import {
   type Autonomy,
   DEFAULT_JOBS,
+  DEFAULT_LOOK,
   DEFAULT_PERSONALITY,
-  energyFrom,
-  JOB_LIST,
   type Jobs,
-  JobsStation,
-  OfferStation,
   type Personality,
-  PersonalityStation,
-  sampleMessage,
-} from "./hire-stations";
+  PRESETS,
+  type RoaryLook,
+} from "@/lib/roary-character";
+import { cn } from "@/lib/utils";
+import { energyFrom, JOB_LIST, JobsStation, OfferStation, PersonalityStation, sampleMessage } from "./hire-stations";
 import type { FigureCue, Gear } from "./roary-figure";
 import { FitStation, PickStation } from "./stations";
 
@@ -53,6 +51,24 @@ export function FittingRoom() {
   const [gear, setGear] = useState<Gear | undefined>();
   const [cue, setCue] = useState<FigureCue>();
   const [signedAt, setSignedAt] = useState<number>();
+  const [spin, setSpin] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const stageRef = useRef<HTMLElement>(null);
+  const snapshotRef = useRef<(() => string | undefined) | null>(null);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(query.matches);
+    const onChange = () => setReducedMotion(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  // On phones the stage sits above the controls; bring it back into view so reactions aren't missed.
+  const showStage = () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    stageRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  };
   const current = STATIONS[station];
   const isLast = station === STATIONS.length - 1;
   const displayName = name.trim() || "Roary";
@@ -66,13 +82,12 @@ export function FittingRoom() {
   };
 
   const sign = () => {
+    // Snapshot first, before the roar distorts the pose.
+    const snapshot = snapshotRef.current?.();
+    saveHiredRoary({ name: displayName, look, personality, jobs, autonomy, snapshot, hiredAt: new Date().toISOString() });
     setSignedAt(Date.now());
     setCue({ kind: "roar", at: Date.now() });
-    try {
-      sessionStorage.setItem("roary:hired", JSON.stringify({ name: displayName, look, personality, jobs, autonomy }));
-    } catch {
-      // Storage can be blocked; the desk falls back to the default Roary.
-    }
+    showStage();
   };
 
   const goTo = (index: number) => {
@@ -80,6 +95,7 @@ export function FittingRoom() {
     // Each station has its own pose: gear shows up at Jobs, a pop greets every arrival.
     if (index === 3) setGear((g) => g ?? JOB_LIST.find((job) => jobs[job.key])?.gear);
     setCue({ kind: "pop", at: Date.now() });
+    showStage();
   };
 
   const jobsOn = JOB_LIST.filter((job) => jobs[job.key]).map((job) => job.label);
@@ -95,15 +111,32 @@ export function FittingRoom() {
   return (
     <main className="grid flex-1 lg:min-h-0 lg:grid-cols-[1.4fr_1fr]">
       <section
-        aria-label={`${displayName}, your ${look.character.species}`}
-        className="ripstop relative min-h-[56dvh] overflow-hidden text-cotton lg:min-h-0"
+        aria-label={`${displayName}, your ${look.character.species}. Use left and right arrows to spin, space to poke.`}
+        className="ripstop relative min-h-[48dvh] scroll-mt-0 overflow-hidden text-cotton outline-none focus-visible:outline-2 focus-visible:outline-safety focus-visible:-outline-offset-4 lg:min-h-0"
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") setSpin((s) => s - Math.PI / 4);
+          else if (event.key === "ArrowRight") setSpin((s) => s + Math.PI / 4);
+          else if (event.key === " ") setCue({ kind: "poke", at: Date.now() });
+          else return;
+          event.preventDefault();
+        }}
+        ref={stageRef}
+        tabIndex={0}
       >
         <span
           aria-hidden
           className="absolute inset-0 bg-[radial-gradient(ellipse_50%_42%_at_50%_45%,rgb(255_255_255/0.16),transparent_70%)]"
         />
         <div className="absolute inset-0">
-          <RoaryStage cue={cue} energy={energyFrom(personality)} gear={station >= 3 ? gear : undefined} look={look} />
+          <RoaryStage
+            cue={cue}
+            energy={energyFrom(personality)}
+            gear={station >= 3 ? gear : undefined}
+            look={look}
+            reducedMotion={reducedMotion}
+            snapshotRef={snapshotRef}
+            spin={spin}
+          />
         </div>
 
         <div className={cn("pointer-events-none absolute top-4 left-4 flex flex-col gap-1", signedAt && "hidden")}>
@@ -116,7 +149,7 @@ export function FittingRoom() {
             aria-live="polite"
             className="pointer-events-none absolute inset-x-3 bottom-10 rounded-[3px] border-2 border-ink bg-cotton p-2.5 text-ink text-xs leading-snug shadow-[0_10px_24px_-12px_rgb(0_0_0/0.7)] sm:text-sm lg:inset-x-auto lg:top-24 lg:right-4 lg:bottom-auto lg:max-w-[22rem] lg:p-3"
           >
-            {sampleMessage(personality, displayName, autonomy)}
+            {sampleMessage(personality, displayName, autonomy, look.character.species)}
             <span className="mt-1.5 block font-mono text-[10px] text-muted-foreground uppercase">Example message</span>
           </p>
         ) : null}
@@ -129,7 +162,7 @@ export function FittingRoom() {
             signedAt && "hidden",
           )}
         >
-          <span>Drag to spin · tap to poke</span>
+          <span>Drag or arrow keys to spin · tap to poke</span>
           <span>Roary-01</span>
         </div>
       </section>
@@ -186,10 +219,12 @@ export function FittingRoom() {
               }}
             />
           ) : null}
-          {station === 4 ? <OfferStation onSign={sign} signed={signedAt !== undefined} summary={summary} /> : null}
+          {station === 4 ? (
+            <OfferStation name={displayName} onSign={sign} signed={signedAt !== undefined} summary={summary} />
+          ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-ink border-t-2 p-4">
+        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-ink border-t-2 bg-background p-4">
           <button
             className="plate inline-flex items-center gap-2 bg-card px-4 py-2.5 font-mono text-sm uppercase disabled:opacity-40"
             disabled={station === 0}

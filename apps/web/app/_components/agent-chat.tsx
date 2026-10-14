@@ -23,8 +23,10 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { cn } from "@/lib/utils";
 import { AgentMessage } from "./agent-message";
 import { WEB_CHAT_AGENT } from "@/app/eve-agent";
+import { useHiredRoary } from "@/lib/hired-roary-store";
+import { hireContext } from "@/lib/roary-character";
 
-const AGENT_NAME = "Roary";
+const DEFAULT_NAME = "Roary";
 // Chat lives on Roary's desk; sessions resume at /desk/s/<id>.
 const DESK_PATH = "/desk";
 
@@ -43,7 +45,11 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
       `${DESK_PATH}/s/${encodeURIComponent(nextSessionId)}`,
     );
   };
+  // The Roary this team hired in the fitting room: its name, face and voice.
+  const hired = useHiredRoary();
+  const agentName = hired?.name ?? DEFAULT_NAME;
   const agent = useEveAgent({
+    prepareSend: (input) => (hired ? { ...input, clientContext: hireContext(hired) } : input),
     agent: WEB_CHAT_AGENT,
     prewarm: hasInputText,
     initialSession:
@@ -128,7 +134,7 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
       <PromptInputTextarea
         disabled={isResuming}
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
-        placeholder="Ask Roary what broke, or what shipped…"
+        placeholder={`Ask ${agentName} what broke, or what shipped…`}
       />
       <ComposerAction
         hasInputText={hasInputText}
@@ -142,6 +148,8 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-card text-card-foreground">
       <ChatHeader
+        avatar={hired?.snapshot}
+        name={agentName}
         activity={isBusy ? "Thinking" : isResuming ? "Catching up" : "On shift"}
         canStartNewChat={activeSessionId !== undefined}
       />
@@ -195,9 +203,9 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
       >
         {showConversationLayout ? null : (
           <div className="flex flex-col items-center gap-3 text-center">
-            <h2 className="quoted type-display text-5xl">Talk to {AGENT_NAME}</h2>
+            <h2 className="quoted type-display text-5xl">Talk to {agentName}</h2>
             <p className="max-w-sm font-mono text-muted-foreground text-sm uppercase">
-              Ask about errors, recent launches, or what Roary is working on right now
+              Ask about errors, recent launches, or what {agentName} is working on right now
             </p>
           </div>
         )}
@@ -258,21 +266,30 @@ function ErrorMessage({ message }: { readonly message: string }) {
 
 function ChatHeader({
   activity,
+  avatar,
   canStartNewChat,
+  name,
 }: {
   readonly activity: string;
+  readonly avatar?: string;
   readonly canStartNewChat: boolean;
+  readonly name: string;
 }) {
   return (
     <header className="ripstop absolute top-0 right-0 left-0 z-20 flex h-16 items-center gap-3 border-ink border-b-2 px-4 text-cotton">
       <span
         aria-hidden
-        className="grid size-10 shrink-0 place-items-center rounded-[3px] border-2 border-cotton bg-label text-2xl leading-none"
+        className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-[3px] border-2 border-cotton bg-label text-2xl leading-none"
       >
-        🦁
+        {avatar ? (
+          // biome-ignore lint/performance/noImgElement: local data URL snapshot
+          <img alt="" className="size-full scale-125 object-cover object-top" src={avatar} />
+        ) : (
+          "🦁"
+        )}
       </span>
       <div className="flex min-w-0 flex-col">
-        <span className="type-display text-2xl leading-none">{AGENT_NAME}</span>
+        <span className="type-display text-2xl leading-none">{name}</span>
         <span className="flex items-center gap-1.5 font-mono text-xs uppercase opacity-85" aria-live="polite">
           <span
             aria-hidden

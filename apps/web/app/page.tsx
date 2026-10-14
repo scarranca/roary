@@ -9,17 +9,17 @@ const SHIFT = [
   {
     time: "09:02",
     title: "Something broke",
-    body: "Sentry flags a new TypeError on checkout. Roary picks it up before anyone opens a tab.",
+    body: "Sentry flags a new TypeError on checkout right after the bundle-discount deploy.",
   },
   {
     time: "09:04",
     title: "Who got hurt",
-    body: "PostHog shows 38 people hit it in the last hour, all on the coupon flow.",
+    body: "PostHog shows every failure is a cart with a single item. Multi-item carts are fine.",
   },
   {
     time: "09:11",
     title: "Fix proposed",
-    body: "Roary reproduces it in a sandbox and opens PR #41 with the fix and a test.",
+    body: "Roary reproduces it in a sandbox and opens a PR with a guard and a test.",
   },
   {
     time: "17:30",
@@ -264,16 +264,16 @@ function FirstDay() {
 function RoaryNote() {
   return (
     <figure className="plate mt-3 flex flex-col gap-3 bg-cotton p-5 text-ink">
-      <figcaption className="font-mono text-xs uppercase">Roary · comment on PR #41</figcaption>
+      <figcaption className="font-mono text-xs uppercase">Roary · comment on the fix PR</figcaption>
       <p>
         <span className="mr-2 bg-label px-1.5 font-mono text-xs uppercase">What I saw</span>
-        <code className="font-mono text-sm">TypeError: coupon is undefined</code> in{" "}
-        <code className="font-mono text-sm">applyDiscount()</code>, starting with the 09:00 deploy.
+        <code className="font-mono text-sm">Cannot read properties of undefined (reading 'lineTotal')</code> in{" "}
+        <code className="font-mono text-sm">priceCart()</code>, starting with the 09:00 deploy.
       </p>
       <p>
         <span className="mr-2 bg-safety px-1.5 font-mono text-xs uppercase">What I think</span>
-        The coupon change skips the empty-cart case. This PR guards it and adds a test. Happy to
-        adjust before someone merges.
+        8d41418 reads <code className="font-mono text-sm">lines[1]</code> without checking it exists, so
+        single-item carts fail. This PR guards it and adds a test. Happy to adjust before someone merges.
       </p>
     </figure>
   );

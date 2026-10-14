@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+// No dev badge: it covers the stage controls during on-screen demos.
+const nextConfig: NextConfig = { devIndicators: false };
 
 export default nextConfig;
