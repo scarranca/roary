@@ -5,6 +5,7 @@ import { type ReactNode, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { type Character, type Headwear, type Outfit, PRESETS, type RoaryLook } from "@/lib/roary-character";
 import { brandColorsFromImage, prepareLogo } from "./brand-colors";
+import { CharacterIcon } from "./character-icon";
 
 const FUR = ["#f2c27a", "#e8742c", "#7a4f2e", "#f4f1ea", "#3b3b3b", "#c9ced6"];
 const MANE = ["#c8641d", "#7a3a14", "#2b2420", "#d9dde3", "#ff5a00", "#2433a8"];
@@ -219,31 +220,32 @@ export function PickStation({
     <div className="flex flex-col gap-7">
       <Field label="Character">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {PRESETS.map((preset) => {
-            const c = preset.character;
-            return (
-              <button
-                aria-pressed={preset.id === presetId}
-                className={cn(
-                  "flex flex-col items-start gap-2 rounded-[3px] border-2 border-ink p-3 text-left transition-colors",
-                  preset.id === presetId ? "bg-safety" : "bg-card hover:bg-label",
-                )}
-                key={preset.id}
-                onClick={() => onPreset(preset.id)}
-                type="button"
-              >
-                <span className="type-display text-2xl leading-none">{preset.label}</span>
-                <span aria-hidden className="flex gap-1">
-                  {[c.head.color, c.mane.kind === "none" ? c.ears.color : c.mane.color, c.muzzle.color].map((color, i) => (
-                    <span className="size-4 rounded-[2px] border-[1.5px] border-ink" key={`${color}-${i}`} style={{ background: color }} />
-                  ))}
-                </span>
-              </button>
-            );
-          })}
+          {PRESETS.map((preset) => (
+            <button
+              aria-pressed={preset.id === presetId}
+              className={cn(
+                "flex items-center gap-2 rounded-[3px] border-2 border-ink p-2 pr-3 text-left transition-colors",
+                preset.id === presetId ? "bg-safety" : "bg-card hover:bg-label",
+              )}
+              key={preset.id}
+              onClick={() => onPreset(preset.id)}
+              type="button"
+            >
+              <CharacterIcon
+                character={preset.character}
+                className="shrink-0 rounded-[2px] border-2 border-ink bg-cotton"
+                size={56}
+              />
+              <span className="type-display text-2xl leading-none">{preset.label}</span>
+            </button>
+          ))}
         </div>
       </Field>
-      <Field label={`Or any character · now: ${look.character.species}`}>
+      <Field label="Or any character">
+        <p className="-mt-1 flex items-center gap-2 font-mono text-muted-foreground text-xs uppercase">
+          <CharacterIcon character={look.character} className="rounded-[2px] border-2 border-ink bg-cotton" size={32} />
+          Now: <span className="text-ink">{look.character.species}</span>
+        </p>
         <PictureToToy onCharacter={onCharacter} onStudy={onStudy} />
       </Field>
       <div className="flex flex-col gap-2.5">

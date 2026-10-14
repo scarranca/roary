@@ -16,7 +16,7 @@ import {
   type RoaryLook,
 } from "@/lib/roary-character";
 import { cn } from "@/lib/utils";
-import { energyFrom, JOB_LIST, JobsStation, OfferStation, PersonalityStation, sampleMessage } from "./hire-stations";
+import { energyFrom, JOB_LIST, JobsStation, OfferStation, PersonalityStation, sampleMessage, voiceLabel } from "./hire-stations";
 import type { FigureCue, Gear } from "./roary-figure";
 import { FitStation, PickStation, type PictureStudy } from "./stations";
 
@@ -106,6 +106,7 @@ export function FittingRoom() {
     { label: "Name", value: displayName },
     { label: "Character", value: look.character.species },
     { label: "Wears", value: `${OUTFIT_LABEL[look.outfit]}${look.logo ? " + your logo" : ""}` },
+    { label: "Voice", value: voiceLabel(personality) },
     { label: "Jobs", value: jobsOn.length ? jobsOn.join(", ") : "None yet" },
     { label: "Fixes", value: autonomy === "open_prs" ? "Opens PRs" : "Suggests only" },
     { label: "Merges", value: "Never · humans merge" },
@@ -230,7 +231,7 @@ export function FittingRoom() {
             />
           ) : null}
           {station === 4 ? (
-            <OfferStation name={displayName} onSign={sign} signed={signedAt !== undefined} summary={summary} />
+            <OfferStation logo={look.logo} logoPatch={look.logoPatch} name={displayName} onSign={sign} signed={signedAt !== undefined} summary={summary} />
           ) : null}
         </div>
 
