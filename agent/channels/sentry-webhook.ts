@@ -33,6 +33,21 @@ function issueFromPayload(resource: string | null, body: any): IssueRef | null {
   return null;
 }
 
+// event_alert payloads only carry the numeric issue id; resolve the short id when we have a token.
+async function lookupShortId(issueId: string): Promise<string | undefined> {
+  const token = process.env.SENTRY_AUTH_TOKEN;
+  if (!token) return undefined;
+  try {
+    const res = await fetch(`https://sentry.io/api/0/issues/${issueId}/`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return res.ok ? ((await res.json()) as { shortId?: string }).shortId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default defineChannel({
   routes: [
     POST("/sentry/webhook", async (request, { from, waitUntil }) => {
@@ -56,18 +71,20 @@ export default defineChannel({
 
       const issue = issueFromPayload(request.headers.get("sentry-hook-resource"), body);
       if (!issue) return new Response("ignored", { status: 200 });
+      issue.shortId ??= await lookupShortId(issue.id);
+      // Incidents are keyed by the Sentry short id (what humans and the skill use), numeric id as fallback.
+      const incidentKey = issue.shortId ?? issue.id;
 
       // Atomic claim on the unique sentry_issue_id: Sentry retries and duplicate alerts start nothing.
       const claimed = await db
         .insert(schema.incidents)
-        .values({ sentryIssueId: issue.id, title: issue.title, status: "investigating" })
+        .values({ sentryIssueId: incidentKey, title: issue.title, status: "investigating" })
         .onConflictDoNothing({ target: schema.incidents.sentryIssueId })
         .returning({ id: schema.incidents.id });
       if (claimed.length === 0) return new Response("already triaged", { status: 200 });
 
-      const label = [issue.shortId, issue.title].filter(Boolean).join(": ");
       const message =
-        `Triage Sentry issue ${issue.id} (${label})${issue.project ? ` in project ${issue.project}` : ""}. ` +
+        `Triage Sentry issue ${incidentKey} (numeric id ${issue.id}: ${issue.title})${issue.project ? ` in project ${issue.project}` : ""}. ` +
         `This was started automatically by a Sentry alert; nobody is watching this session, so post your incident report on GitHub.`;
 
       waitUntil(
@@ -80,7 +97,7 @@ export default defineChannel({
           },
         }),
       );
-      return Response.json({ ok: true, issueId: issue.id }, { status: 202 });
+      return Response.json({ ok: true, issueId: issue.id, incident: incidentKey }, { status: 202 });
     }),
   ],
 });

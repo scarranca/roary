@@ -16,7 +16,7 @@ If the issue clearly belongs to another project or repo, use that instead and sa
 
 ## 1. Check for duplicate work
 
-Call `list_incidents` (limit 20) and look for this Sentry issue id.
+Call `list_incidents` (limit 20) and look for this issue by its Sentry short id (e.g. `JAVASCRIPT-NEXTJS-K4-1`) or numeric id.
 
 - Status `diagnosed`, `fix_proposed` or `resolved`: it's already been triaged. Don't redo it. Reply with a one-line summary of the existing record (and its GitHub issue if you can find it), unless someone explicitly asked you to re-triage.
 - Status `investigating` with no diagnosis: that's the claim the Sentry alert trigger wrote when it started this session. Carry on.
@@ -70,7 +70,7 @@ Always say why, and what would raise it.
 
 ## 6. Record it
 
-Call `save_incident` with `sentryIssueId` (the same id you were given), `title`, `status: "diagnosed"`, `usersAffected`, `diagnosis` (what you saw vs what you think, 2 to 4 sentences, with the confidence) and `suspectCommit` (full or short SHA). Do this before posting so the record exists even if GitHub fails.
+Call `save_incident` with `sentryIssueId` set to the Sentry **short id** (e.g. `JAVASCRIPT-NEXTJS-K4-1`; that's the key the alert trigger and the team use, so reuse the existing row's id if one exists), `title`, `status: "diagnosed"`, `usersAffected`, `diagnosis` (what you saw vs what you think, 2 to 4 sentences, with the confidence) and `suspectCommit` (full or short SHA). Do this before posting so the record exists even if GitHub fails.
 
 ## 7. Post the incident report on GitHub
 
