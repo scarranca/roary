@@ -93,6 +93,8 @@ export type HiredRoary = {
   /** PNG data URL of the figure, taken when the offer letter was signed. */
   snapshot?: string;
   hiredAt: string;
+  /** Row id in roary_profiles once the hire is saved to Neon (#15). */
+  profileId?: number;
 };
 
 const SPECIES_EMOJI: [RegExp, string][] = [

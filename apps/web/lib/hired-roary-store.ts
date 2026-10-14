@@ -16,6 +16,26 @@ export function saveHiredRoary(hired: HiredRoary) {
   }
 }
 
+/**
+ * Saves the hire to Neon in the background; the local copy keeps working if this
+ * fails (no network, no database). Images are not sent.
+ */
+export async function persistHiredRoary(hired: HiredRoary) {
+  const { logo: _logo, ...look } = hired.look;
+  try {
+    const response = await fetch("/api/profiles", {
+      body: JSON.stringify({ name: hired.name, look, personality: hired.personality, jobs: hired.jobs, autonomy: hired.autonomy }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) return;
+    const { id } = (await response.json()) as { id?: number };
+    if (typeof id === "number") saveHiredRoary({ ...hired, profileId: id });
+  } catch {
+    // Offline or blocked: the browser copy is enough for the desk.
+  }
+}
+
 function readHiredRoary(): HiredRoary | undefined {
   try {
     const raw = localStorage.getItem(KEY);
