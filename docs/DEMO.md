@@ -9,15 +9,16 @@ Talk track and judge Q&A: [`PITCH.md`](./PITCH.md). Reset commands: [`scripts/de
 
 ## 0. Merge gate (read first)
 
-As of 2:05pm PT, production (`https://roary-rho.vercel.app`) runs only the merged PRs #25–#28: personality, GitHub channel + tools, Sentry + PostHog connections, JSON fix. **PR #1 in the demo shop came from an `eve dev` run, not from prod.** Every live beat below depends on PRs that are still open:
+As of 3:05pm PT every app PR is merged: #25–#40 and #42 (#42 routes `/sentry/webhook` to the eve service, so it now returns 401 on a bad signature instead of 404). The only open PR is #43 (pre-rendered "Free shipping over $50" launch video source). **PR #1 in the demo shop still came from an `eve dev` run, not from prod.**
 
-| Beat | Needs merged + `npx eve deploy` by T-30 | Owner | If it isn't merged |
+| Beat | PRs | Status on prod (dry run, 3:00pm) | Fallback |
 |---|---|---|---|
-| Hire in the UI | #29 (web app), #30 (fitting room) | Martha | Fallback only: the PR #29 preview (SSO-protected, so sign in first) or screenshots |
-| Chat in the browser | #33 (`none()` auth on the eve channel) | Santiago | Use `npx eve remote connect --url https://roary-rho.vercel.app` (a TUI that talks to prod, not a local server). Second fallback, live on prod today with no merge needed: comment `@roary <prompt>` on an issue in roary-demo-shop, since the GitHub channel (#26) is deployed |
-| Triage report | Triage skill (#6/#7, in progress) | — | The prompt below is written to work without the skill, since it names every project |
-| Fix PR | #32 (fix-error skill) | Santiago | Fallback only: show demo-shop PR #1 |
-| Launch video | #31 (template, render tool, PR trigger) | Santiago | Fallback only: the pre-rendered video (**the Blob URL doesn't exist yet, see T-30**) |
+| Hire in the UI | #29 (web app), #30 (fitting room), #38–#40 | Merged. `/`, `/hire`, `/desk` return 200 (0.10–0.17s) | Screenshots in tab 8 |
+| Chat in the browser | #33 (`none()` auth), #34 (hired voice) | Merged. An anonymous `POST /eve/v1/session` returns 202 | `npx eve remote connect --url https://roary-rho.vercel.app`. **Not** `@roary` on GitHub, see §5 |
+| Triage report | #35 (triage skill + Sentry webhook), #42 | Merged. `/sentry/webhook` returns 401 on an unsigned request. No real Sentry delivery seen in prod logs yet, see §5 | Screenshot of the dry-run report |
+| Fix PR | #32 (fix-error skill) | Merged. Not timed on prod | Demo-shop PR #1 |
+| Launch video | #31 (template, render tool, PR trigger) | Merged. The app receives `pull_request` events on prod | Pre-rendered video: [Blob URL](https://6wu0snhgzxr9rpdd.public.blob.vercel-storage.com/launch-videos/scarranca-roary-pr-32-wzDtxdEZG1PC9gDEkkUFoYKIAhoVbR.mp4) |
+| Desk feed | #37 (incidents + launches from Neon) | Merged | Seed rows (§2, T-30) |
 
 After the last merge: `npx eve deploy`, then `npx eve info --json` on the deployed commit (0 diagnostics), then one full dry run (issue #19).
 
@@ -31,8 +32,8 @@ After the last merge: `npx eve deploy`, then `npx eve info --json` on the deploy
 
 | # | Tab | URL |
 |---|---|---|
-| 1 | Hire Roary (landing → `/hire`) | `https://roary-rho.vercel.app/hire` (after #29/#30 deploy) |
-| 2 | Roary chat (`/desk`) | `https://roary-rho.vercel.app/desk`, or a terminal running `npx eve remote connect --url https://roary-rho.vercel.app`, or an issue in roary-demo-shop where you comment `@roary ...` |
+| 1 | Hire Roary (landing → `/hire`) | `https://roary-rho.vercel.app/hire` |
+| 2 | Roary chat (`/desk`) | `https://roary-rho.vercel.app/desk`, or a terminal running `npx eve remote connect --url https://roary-rho.vercel.app` (`@roary` on GitHub doesn't work yet, see §5) |
 | 3 | Bug PR, "Add bundle discount for multi-item carts" | `https://github.com/scarranca/roary-demo-shop/pulls` (the open break PR, see `scripts/demo-reset.md` §B) |
 | 4 | The shop | `https://roary-demo-shop.vercel.app` |
 | 5 | Terminal: traffic command typed in, **not** run yet | see §3 |
@@ -49,12 +50,18 @@ After the last merge: `npx eve deploy`, then `npx eve info --json` on the deploy
 - [ ] **Shop is healthy:** `scripts/demo-reset.md` §A. Check: `npx tsx scripts/traffic.ts 10` against prod shows **0 failed**.
 - [ ] **Break PR is open and ready** (not merged): `scripts/demo-reset.md` §B. Its Vercel preview check is green.
 - [ ] **Feature PR for the launch video** is open in the demo shop, labeled `feature`. Example: "Free shipping banner over $50", a small UI-only change. **Merge it at T-5** so the render is done by 2:15.
-- [ ] **Pre-rendered launch video:** render one from the #31 template, upload it to Blob, and paste the URL here: `TODO(Santiago): BLOB_URL`. Open it in tab 8.
+- [ ] **Pre-rendered launch video (done):** `https://6wu0snhgzxr9rpdd.public.blob.vercel-storage.com/launch-videos/scarranca-roary-pr-32-wzDtxdEZG1PC9gDEkkUFoYKIAhoVbR.mp4` (rendered from the #31 template for roary PR #32). Open it in tab 8.
 - [ ] **Screen-record one full successful run** (QuickTime, 1080p) and keep it on the desktop. This is the last-resort fallback for everything.
 - [ ] Seed Neon so the desk isn't empty: `npx tsx --env-file=.env.local scripts/seed-demo.ts` (only once triage testing on `incidents` is finished).
 - [ ] Screenshot the dry run's triage report and fix PR. Put them in tab 8.
 
 ### T-10 min
+- [ ] **No local Roary running.** `ps aux | grep 'eve dev' | grep -v grep` must print nothing on every laptop in the room. A local `eve dev` was running during the dry run. Stop it before going on stage, so prod is the only agent that answers.
+- [ ] **Prod smoke test** (dry-run results in brackets):
+  ```bash
+  curl -s -o /dev/null -w "webhook %{http_code}\n" -X POST https://roary-rho.vercel.app/sentry/webhook -H 'content-type: application/json' -d '{}'   # [401]
+  for p in /eve/v1/health / /hire /desk; do curl -s -o /dev/null -w "$p %{http_code} %{time_total}s\n" https://roary-rho.vercel.app$p; done   # [all 200, under 0.25s]
+  ```
 - [ ] **Sign-ins.** GitHub (scarranca, with merge rights on roary-demo-shop), Sentry (org `roary`), PostHog, Vercel (team `roary-hack`).
 - [ ] **Remote chat auth.** Run `vercel env pull` first. Smoke-test with `npx eve remote invoke --url https://roary-rho.vercel.app "hi"`. If it fails with 401 or `principal_required`, add `-H "Authorization: Bearer $VERCEL_OIDC_TOKEN"` (from `.env.local`) to `eve remote connect` / `invoke`.
 - [ ] **Vercel Connect (Sentry is user-scoped).** In the exact chat surface you'll use on stage, ask Roary "List the 3 most recent Sentry issues in project javascript-nextjs-k4." If it posts a `connect.vercel.com/authorize/...` link, finish it now. Otherwise the link shows up mid-demo.
@@ -81,12 +88,12 @@ Durations are targets. Use the dry run (issue #19) to fill in real timings, and 
 | Time | Who | On screen | Action / words | Cutover rule → Fallback |
 |---|---|---|---|---|
 | **0:00–0:15** | P | Tab 1: Hire landing | **Hook:** "Every small team has the same 2am problem: something breaks, and four people open four tabs. We didn't build another dashboard. We hired a teammate. Meet Roary." | — |
-| 0:00 | D | Tab 3 → back to tab 1 | **During the hook, D clicks "Merge" on the bug PR** ("Add bundle discount for multi-item carts"). Vercel starts the production deploy, which takes about 45–90s. | Merge button blocked → `gh pr merge <n> --repo scarranca/roary-demo-shop --merge` in tab 5. |
+| 0:00 | D | Tab 3 → back to tab 1 | **During the hook, D clicks "Merge" on the bug PR** ("Add bundle discount for multi-item carts"). Vercel starts the production deploy. Demo-shop production builds took 12–24s today (Vercel's Duration column), so expect Ready about 30s after the merge. | Merge button blocked → `gh pr merge <n> --repo scarranca/roary-demo-shop --merge` in tab 5. |
 | **0:15–0:45** | P + D | Tab 1 → `/hire` fitting room | D: pick a character → personality preset → Jobs: Triage ON, Fix PRs ON, Launch videos ON. **Point at "Merge PRs" locked off.** Sign the offer letter → roar. P: "You don't configure Roary, you hire it: a name, a personality, a job description. One job is locked forever: merging. Humans merge." | UI fails or is slow (>5s) → screenshots in tab 8, or the PR #29 preview. Not merged at all → show `agent/instructions.md` Guardrails on GitHub. |
-| **0:45–1:05** | D, then P | Tab 4 → tab 5 | D checks in the Vercel tab/toast that the deploy is **Ready**, then presses Enter on the traffic command. Output ends with something like `24/42 failed`. P: "We just shipped a bundle discount. Forty-two shoppers hit checkout, and most buy a single item…" | Deploy not Ready by 0:55 → P stretches ("…and that deploy just went out"), D waits up to 1:05, then runs it anyway. Still 0 failures → use the 2:05pm run ("24 of 42 failed") and tab 6 Sentry, which already holds the events from testing. |
+| **0:45–1:05** | D, then P | Tab 4 → tab 5 | D checks in the Vercel tab/toast that the deploy is **Ready**, then presses Enter on the traffic command. The script finishes in about 5s (including `npx` startup). Output ends with something like `25 failed` (3:00pm dry run: 17 ok, 25 failed, all 500). P: "We just shipped a bundle discount. Forty-two shoppers hit checkout, and most buy a single item…" | Deploy not Ready by 0:55 → P stretches ("…and that deploy just went out"), D waits up to 1:05, then runs it anyway. Still 0 failures → use the 3:00pm dry run ("25 of 42 failed") and tab 6 Sentry, which already holds the events from testing. |
 | **1:05–1:50** | D types, P narrates | Tab 2: chat | D pastes **Prompt 1** (below). P narrates while the tool calls stream: "It's reading the stack trace in Sentry… now asking PostHog how many real shoppers hit it… now walking the GitHub history for the commit." When the report lands, P reads the **Impact**, **What I saw** and **What I think + confidence** lines aloud. | No tool call within 15s, or no report by 1:45 → P: "Here's the same report from our run 20 minutes ago" → screenshot in tab 8. Sentry sign-in link appears → skip to the screenshot (don't sign in on stage). |
 | **1:50–2:15** | D types, P narrates | Tab 2 → new PR | D pastes **Prompt 2**. Roary opens the PR on a `roary/fix-*` branch with a regression test. P: "It doesn't just tell us. It opens the fix and a test that reproduces the crash, links the commit and asks a human to merge." **D clicks Merge.** P: "That's the only click a human had to make." | PR not open by 2:05 → tab 8: demo-shop PR #1 ("here's the PR Roary opened by itself this afternoon, with the regression tests"). Scroll the diff and the test. Don't merge anything in the fallback. |
-| **2:15–2:45** | P | Feature PR → video | "And when we ship something good, Roary celebrates." Open the feature PR merged at T-5 and show Roary's comment with the video link. **Play the video** (20s, so let it run about 15s). | Comment missing or the video doesn't load in 5s → play the pre-rendered Blob URL from tab 8. No Blob URL → the screen recording, at the video section. |
+| **2:15–2:45** | P | Feature PR → video | "And when we ship something good, Roary celebrates." Open the feature PR merged at T-5 and show Roary's comment with the video link. **Play the video** (20s, so let it run about 15s). | Comment missing or the video doesn't load in 5s → play the pre-rendered Blob URL from tab 8 (§2, T-30). If that doesn't load either, use the screen recording, at the video section. |
 | **2:45–3:00** | P | Tab 1 (or a closing card) | **Impact + close:** "Any team on Vercel, GitHub, Sentry and PostHog can hire Roary today, with one `eve deploy`. Roary doesn't replace your team. It's the teammate who never sleeps and always says thank you." | — |
 
 **Global fallback:** if two beats in a row fail, D switches to the screen recording at the matching timestamp and P narrates over it. Say "this is the recording from our dry run."
@@ -124,11 +131,12 @@ Expected: a kind refusal plus an offer to check CI. This shows the guardrail liv
 
 ---
 
-## 5. Known risks (watch these in the dry run)
+## 5. Known risks (from the 3:00pm dry run)
 
-- **Merge gate.** Five open PRs (#29, #30, #31, #32, #33) and the triage PR stand between today's prod and the live path. Anything not merged by T-30 runs on its fallback only.
+- **`@roary` on GitHub doesn't reach prod.** The myroary GitHub App subscribes only to `pull_request` events (see `performed_via_github_app.events` on any myroary comment). Two `@roary` comments on demo-shop issue #2 (21:51Z and 21:58Z) produced no `POST /eve/v1/github` in prod logs and got no reply. Roary-repo PR events do arrive (200). **Fix (human, about 2 min):** github.com/settings/apps/myroary → Permissions & events → Subscribe to events → check **Issue comment**, **Issues**, **Pull request review comment** → Save. Then comment `@roary hi` on demo-shop issue #2 and confirm a `POST /eve/v1/github` in `vercel logs --scope roary-hack --project roary --since 5m --query github` and a reply. Until that works, the GitHub comment isn't a chat fallback. Use `/desk` or `eve remote connect`.
+- **Sentry → Roary auto-trigger is unproven on prod.** The route works (401 on a bad signature). In the last 6h of prod logs, every `/sentry/webhook` hit was a manual curl (one 404 before #42, then 401s). Sentry itself hasn't delivered yet. JAVASCRIPT-NEXTJS-K4-1 is already claimed in `incidents`, so a repeat alert returns 200 "already triaged" and starts nothing. **Check (human):** Sentry → Settings → Developer Settings → Roary → check the webhook URL is `https://roary-rho.vercel.app/sentry/webhook`, then open its Request Log. A 401 there means `SENTRY_WEBHOOK_SECRET` on Vercel doesn't match the integration's client secret. A 200 "already triaged" (or 202) means it works. Don't pitch the auto-trigger as live unless the Request Log shows a 2xx.
 - **Sentry in the public chat.** Sentry auth is a *user-scoped* Vercel Connect connector. An anonymous browser session (`none()` auth from #33) has no Vercel user, so the Sentry MCP may fail or ask for sign-in. For the triage beat, prefer `eve remote connect` (your Vercel user via OIDC) or confirm at T-10 that `/desk` can reach Sentry.
-- **Deploy time.** The live break depends on a Vercel production build (about 45–90s, not timed yet). Time it in the dry run. If it's over 60s, merge the break PR at T-1 instead and say "this just went out."
-- **Fix PR time.** Not measured yet. A fix run makes several sequential GitHub calls (read files, branch, commit each file, open the PR), so it will probably overrun its 25s slot. Time it, and treat PR #1 as the expected fallback.
-- **Launch video.** No pre-rendered Blob URL exists yet, and the PR trigger is in #31. That leaves the screen recording as the only fallback until it exists.
-- **Shared data.** The triage agent is testing against `incidents` right now. Seeding and cleanup must wait until it's done.
+- **Deploy time: OK.** Demo-shop production builds took 12–24s. Roary's own production builds take 51s–1m, so don't merge Roary PRs after T-30.
+- **Fix PR time.** Not timed on prod (the fix needs a prod chat session, and the dry run had no local server). A fix run makes several sequential GitHub calls (read files, branch, commit each file, open the PR), so it will probably overrun its 25s slot. Treat PR #1 as the expected fallback.
+- **Launch video: fallback ready.** The pre-rendered Blob URL is in §2 (T-30). It's 4.5 MB: the first (cold) download took 14s and a warm one took 1.9s (0.46s to first byte). Play it once in tab 8 at T-10 so it's cached, and keep a local copy of the .mp4 on the desktop. The live trigger depends on demo-shop `pull_request` events reaching prod. Merge the `feature` PR at T-5 and check for Roary's comment at T-2.
+- **Shared data.** The bug is still live on the demo shop's `main` (`8d41418`), and K4-1 is claimed in `incidents`. Clean up and seed only after testing is done (`scripts/demo-reset.md` §C).
