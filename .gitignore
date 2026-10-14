@@ -16,3 +16,4 @@ dist/
 *.tsbuildinfo
 .impeccable/
 .hyperframes/
+.thumbnails/
