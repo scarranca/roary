@@ -146,7 +146,7 @@ export async function resolveWorkspace(principal: Principal): Promise<ResolvedWo
 }
 
 export function findConnection(resolved: ResolvedWorkspace, provider: ConnectionProvider): Connection | undefined {
-  // "disconnected": the provider side uninstalled Roary (Sentry `installation.deleted`).
+  // "disconnected": the provider side uninstalled Roary (GitHub or Sentry `installation.deleted`).
   return resolved.connections.find((c) => c.provider === provider && c.status !== "disabled" && c.status !== "disconnected");
 }
 
