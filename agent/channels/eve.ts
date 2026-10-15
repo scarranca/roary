@@ -129,8 +129,13 @@ const roaryAuth: AuthFn<Request> = withAuthChallenges(
       request.method === "POST" &&
       (pathname === "/eve/v1/session" || (sessionId !== undefined && /^\/eve\/v1\/session\/[^/]+\/?$/.test(pathname)));
     if (isSend && (await carriesMessage(request))) {
-      const policy = await limitPolicy(caller);
-      const decision = policy ? await checkAndCountMessage(policy) : { ok: true as const };
+      // Limits fail open (a database blip shouldn't stop the chat); ownership above fails closed.
+      const decision = await limitPolicy(caller)
+        .then((policy) => (policy ? checkAndCountMessage(policy) : { ok: true as const }))
+        .catch((error: unknown) => {
+          console.warn("usage limits unavailable; allowing the message", { error: errorName(error) });
+          return { ok: true as const };
+        });
       if (!decision.ok) {
         const retryAfter = Math.max(1, Math.ceil((decision.resetsAt.getTime() - Date.now()) / 1000));
         throw new HttpError(
