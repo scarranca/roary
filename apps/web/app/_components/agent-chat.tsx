@@ -2,7 +2,7 @@
 
 import type { UserContent } from "ai";
 import { useEveAgent } from "eve/react";
-import { AlertCircleIcon, BrainIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { AlertCircleIcon, BrainIcon, CoffeeIcon, PlusIcon, SquareIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import {
   Conversation,
@@ -83,6 +83,8 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
     (agent.status === "submitted" || lastMessage?.role !== "assistant" || isPendingAssistantShell);
   const turnFailure = isBusy || isResuming ? undefined : getLatestTurnFailure(agent.events);
   const errorMessage = cancellationError ?? agent.error?.message ?? turnFailure;
+  // A full hourly/daily limit (429 rate_limited from agent/channels/eve.ts) is a pause, not a failure.
+  const isBreather = cancellationError === undefined && errorCode(agent.error) === "rate_limited";
   const hasConversationContent = !isEmpty || errorMessage !== undefined;
   const showConversationLayout = isResuming || hasConversationContent;
   const activeSessionId = sessionId ?? agent.session?.sessionId;
@@ -196,7 +198,9 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
               ),
             )}
             {showPendingThinking ? <PendingThinking /> : null}
-            {errorMessage ? <ErrorMessage message={errorMessage} /> : null}
+            {errorMessage ? (
+              isBreather ? <BreatherMessage message={errorMessage} /> : <ErrorMessage message={errorMessage} />
+            ) : null}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
@@ -285,6 +289,24 @@ function ErrorMessage({ message }: { readonly message: string }) {
       </MessageContent>
     </Message>
   );
+}
+
+function BreatherMessage({ message }: { readonly message: string }) {
+  return (
+    <Message className="max-w-full" from="assistant">
+      <MessageContent>
+        <div className="flex w-full items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm" role="status">
+          <CoffeeIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <p>{message}</p>
+        </div>
+      </MessageContent>
+    </Message>
+  );
+}
+
+function errorCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" ? code : undefined;
 }
 
 function ChatHeader({

@@ -92,3 +92,44 @@ export function verifyPayload<T>(signed: string): T | null {
     return null;
   }
 }
+
+// ---- Guest identity -------------------------------------------------------------------------
+// Anonymous visitors get a random id in an httpOnly cookie, `<id>.<hmac>`, set by the web app
+// (apps/web/proxy.ts) and verified by the eve channel, so a guest owns the chats they start
+// without signing in. The HMAC uses its own subkey.
+
+export const GUEST_COOKIE = "roary_guest";
+const GUEST_ID = /^[A-Za-z0-9_-]{16,64}$/;
+
+export function newGuestId(): string {
+  return randomBytes(18).toString("base64url");
+}
+
+export function signGuestId(id: string): string {
+  if (!GUEST_ID.test(id)) throw new Error("Invalid guest id.");
+  return `${id}.${createHmac("sha256", subkey("guest-cookie")).update(id).digest("base64url")}`;
+}
+
+/** The guest id from a signed cookie value, or null if it is missing, malformed or forged. */
+export function verifyGuestCookie(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const [id, mac, extra] = value.split(".");
+  if (!id || !mac || extra !== undefined || !GUEST_ID.test(id)) return null;
+  try {
+    const expected = createHmac("sha256", subkey("guest-cookie")).update(id).digest();
+    const given = Buffer.from(mac, "base64url");
+    return given.length === expected.length && timingSafeEqual(given, expected) ? id : null;
+  } catch {
+    return null; // no CONNECTIONS_ENCRYPTION_KEY: nobody is a verified guest
+  }
+}
+
+/** One cookie's value from a raw `Cookie` header. */
+export function readCookie(header: string | null | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return undefined;
+}
