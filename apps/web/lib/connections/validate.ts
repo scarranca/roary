@@ -99,6 +99,88 @@ export async function validatePosthog(
   }
 }
 
+// ---- GitHub personal access token (quick connect) -----------------------------------------
+
+export const GITHUB_REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+export const MAX_PAT_REPOS = 20;
+const GITHUB_API = "https://api.github.com";
+
+/** "owner/name" lines, commas or spaces (also pasted github.com URLs) → a de-duplicated list, or null if one is malformed. */
+export function parseRepoList(input: string | string[]): string[] | null {
+  const parts = (Array.isArray(input) ? input : input.split(/[\s,]+/))
+    .map((r) => r.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (parts.some((r) => !GITHUB_REPO.test(r) || r.endsWith("/.") || r.endsWith("/.."))) return null;
+  const seen = new Map<string, string>();
+  for (const r of parts) if (!seen.has(r.toLowerCase())) seen.set(r.toLowerCase(), r);
+  return [...seen.values()];
+}
+
+/** `github-authentication-token-expiration: 2026-11-13 08:00:00 UTC` (or `-0800`) → ISO, else null. */
+export function parseTokenExpiration(header: string | null): string | null {
+  const m = header?.trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s*(UTC|Z|[+-]\d{2}:?\d{2})$/);
+  if (!m) return null;
+  const zone = m[3] === "UTC" || m[3] === "Z" ? "Z" : `${m[3]!.slice(0, 3)}:${m[3]!.slice(-2)}`;
+  const ms = Date.parse(`${m[1]}T${m[2]}${zone}`);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+export type GithubPatCheck = { login: string; repos: string[]; expiresAt: string | null };
+
+/**
+ * GitHub PAT: GET /user (who it is, and when it expires: fine-grained tokens send
+ * `github-authentication-token-expiration`), then GET /repos/{o}/{r} for every repo. GitHub
+ * doesn't report a fine-grained token's own permissions, so the check is that the repo is
+ * visible and the response's `permissions.push` (write access) isn't false; the Test button and
+ * Roary's first comment are the real proof. `fetchImpl` lets tests mock GitHub.
+ */
+export async function validateGithubPat(
+  token: string,
+  repoInput: string | string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<Validation<GithubPatCheck>> {
+  const repos = parseRepoList(repoInput);
+  if (!repos || repos.length === 0) return { ok: false, code: "bad_input", message: "Add repos as owner/name, like acme/web." };
+  if (repos.length > MAX_PAT_REPOS) return { ok: false, code: "bad_input", message: `Up to ${MAX_PAT_REPOS} repos.` };
+  if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) return { ok: false, code: "bad_input", message: "That doesn't look like a GitHub token (github_pat_…)." };
+  const get = (path: string) =>
+    fetchImpl(`${GITHUB_API}${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+  try {
+    const user = await get("/user");
+    if (user.status === 401) return { ok: false, code: "unauthorized", message: "GitHub rejected that token (wrong, revoked or expired)." };
+    if (!user.ok) return { ok: false, code: `http_${user.status}`, message: `GitHub answered ${user.status}.` };
+    const { login } = (await user.json()) as { login?: string };
+    if (!login) return { ok: false, code: "no_login", message: "GitHub didn't say who that token belongs to." };
+    const expiresAt = parseTokenExpiration(user.headers.get("github-authentication-token-expiration"));
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) return { ok: false, code: "expired", message: "That token has expired." };
+
+    const checked: string[] = [];
+    for (const repo of repos) {
+      const response = await get(`/repos/${repo}`);
+      if (response.status === 404 || response.status === 403) {
+        return { ok: false, code: "repo_not_found", message: `The token can't see ${repo}. Add it under the token's Repository access.` };
+      }
+      if (!response.ok) return { ok: false, code: `http_${response.status}`, message: `GitHub answered ${response.status} for ${repo}.` };
+      const body = (await response.json()) as { full_name?: string; permissions?: { push?: boolean } };
+      if (body.permissions?.push === false) {
+        return {
+          ok: false,
+          code: "read_only",
+          message: `${repo} is read-only for this token. Roary needs Contents, Issues and Pull requests: Read and write.`,
+        };
+      }
+      checked.push(body.full_name ?? repo);
+    }
+    return { ok: true, checkedVia: "github-pat", detail: { login, repos: checked, expiresAt } };
+  } catch (error) {
+    return unreachable("GitHub", error);
+  }
+}
+
 export const GITHUB_CONNECTOR = process.env.GITHUB_CONNECTOR ?? "github/roary";
 export const GITHUB_APP_SLUG = process.env.GITHUB_APP_SLUG ?? "myroary";
 

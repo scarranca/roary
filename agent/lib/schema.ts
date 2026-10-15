@@ -24,10 +24,18 @@ export const workspaces = pgTable(
     // Neon Auth user id of the creator; null for the demo workspace.
     ownerUserId: text("owner_user_id"),
     isDemo: boolean("is_demo").notNull().default(false),
+    // Non-guessable id for per-workspace webhook URLs (/github/webhook/<id>, /sentry/webhook/<id>);
+    // the serial id never leaves the server. Postgres fills it for existing and new rows.
+    publicId: text("public_id")
+      .notNull()
+      .default(sql`replace(gen_random_uuid()::text, '-', '')`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  // At most one demo workspace.
-  (t) => [uniqueIndex("workspaces_single_demo_idx").on(t.isDemo).where(sql`${t.isDemo}`)],
+  (t) => [
+    // At most one demo workspace.
+    uniqueIndex("workspaces_single_demo_idx").on(t.isDemo).where(sql`${t.isDemo}`),
+    unique("workspaces_public_id_unique").on(t.publicId),
+  ],
 );
 
 export const workspaceMembers = pgTable(
@@ -48,7 +56,8 @@ export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number];
 export const GITHUB_INSTALLATION_INDEX = "connections_github_installation_unique";
 
 // One row per (workspace, provider). `config` is non-secret routing (github: {installationId,
-// repos[]}; sentry: {org, project}; posthog: {projectId, host}). Tokens live encrypted in
+// repos[]} or, for a pasted token, {mode: "pat", repos[], login, expiresAt}; sentry: {org,
+// project[, source: "internal"]}; posthog: {projectId, host}). Tokens live encrypted in
 // `secretCiphertext` (AES-GCM, agent/lib/crypto.ts) or behind a Vercel Connect connector
 // in `connectorRef`, never in `config`.
 export const connections = pgTable(
@@ -62,6 +71,10 @@ export const connections = pgTable(
     status: text("status").notNull().default("pending"),
     config: jsonb("config").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     secretCiphertext: text("secret_ciphertext"),
+    // Quick connect: the secret that signs this workspace's own webhooks (GitHub repo webhook
+    // secret, Sentry internal integration client secret). AES-GCM with its own AAD
+    // (sealWebhookSecret in agent/lib/crypto.ts), so it can never be read as the API token.
+    webhookSecretCiphertext: text("webhook_secret_ciphertext"),
     connectorRef: text("connector_ref"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -76,6 +89,21 @@ export const connections = pgTable(
       .on(sql`(${t.config}->>'installationId')`)
       .where(sql`${t.provider} = 'github' and coalesce(${t.config}->>'installationId', '') <> ''`),
   ],
+);
+
+// Webhook deliveries already handled per workspace (GitHub X-GitHub-Delivery, Sentry request-id):
+// a replayed or retried delivery is answered 200 and starts nothing.
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    provider: text("provider").notNull(),
+    deliveryId: text("delivery_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "webhook_deliveries_pk", columns: [t.workspaceId, t.provider, t.deliveryId] })],
 );
 
 // Errors Roary has triaged: one row per Sentry issue.

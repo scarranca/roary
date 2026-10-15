@@ -14,6 +14,8 @@ export type UpsertConnection<P extends Provider> = {
   config: ConfigFor<P>;
   secretCiphertext: string | null;
   connectorRef: string | null;
+  /** Quick-connect webhook secret. Omitted: an existing row keeps its own (a new row gets none). */
+  webhookSecretCiphertext?: string | null;
 };
 
 /**
@@ -76,7 +78,10 @@ export function createMemoryStore(rows: MemoryRows = new Map()): ConnectionStore
             (r.config as ConfigFor<"github">).installationId === installationId,
         );
       if (heldElsewhere) throw new InstallationClaimedError();
-      const saved = { ...row, updatedAt: new Date().toISOString() } as Connection<typeof row.provider>;
+      const previous = rows.get(key(row.workspaceId, row.provider));
+      const webhookSecretCiphertext =
+        row.webhookSecretCiphertext === undefined ? (previous?.webhookSecretCiphertext ?? null) : row.webhookSecretCiphertext;
+      const saved = { ...row, webhookSecretCiphertext, updatedAt: new Date().toISOString() } as Connection<typeof row.provider>;
       rows.set(key(row.workspaceId, row.provider), saved);
       return saved;
     },
@@ -107,6 +112,7 @@ async function createPostgresStore(): Promise<ConnectionStore> {
     status: row.status as ConnectionStatus,
     config: row.config as Connection["config"],
     secretCiphertext: row.secretCiphertext,
+    webhookSecretCiphertext: row.webhookSecretCiphertext,
     connectorRef: row.connectorRef,
     updatedAt: row.updatedAt.toISOString(),
   });
@@ -127,9 +133,10 @@ async function createPostgresStore(): Promise<ConnectionStore> {
     },
     async upsert(input) {
       const config = input.config as unknown as Record<string, unknown>;
+      const keepWebhookSecret = input.webhookSecretCiphertext === undefined;
       const [row] = await db
         .insert(connections)
-        .values({ ...input, config })
+        .values({ ...input, config, webhookSecretCiphertext: input.webhookSecretCiphertext ?? null })
         .onConflictDoUpdate({
           target: [connections.workspaceId, connections.provider],
           set: {
@@ -137,6 +144,7 @@ async function createPostgresStore(): Promise<ConnectionStore> {
             config,
             secretCiphertext: input.secretCiphertext,
             connectorRef: input.connectorRef,
+            ...(keepWebhookSecret ? {} : { webhookSecretCiphertext: input.webhookSecretCiphertext }),
             updatedAt: sql`now()`,
           },
         })

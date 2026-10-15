@@ -1,16 +1,27 @@
 import { z } from "zod";
 import { hasEncryptionKey } from "../../../../../../agent/lib/crypto";
-import { savePosthog, saveSentry } from "@/lib/connections/service";
-import { POSTHOG_HOSTS } from "@/lib/connections/validate";
+import { saveGithubPat, savePosthog, saveSentry } from "@/lib/connections/service";
+import { MAX_PAT_REPOS, POSTHOG_HOSTS } from "@/lib/connections/validate";
 import { getUserWorkspace } from "@/lib/connections/workspace";
 
-// Paste-a-key connects (Sentry, PostHog): validate live, then store encrypted.
-// GitHub connects through the App install flow (/api/connect/github/install) instead.
+// Paste-a-key connects: validate live, then store encrypted.
+// - sentry: token + org + project, optionally the internal integration's client secret (quick
+//   connect: its alerts start triage automatically);
+// - posthog: personal API key + project + region;
+// - github: quick connect with a personal access token + repos (the App install flow,
+//   /api/connect/github/install, stays the second option behind GITHUB_CONNECT_ENABLED).
 
 const sentrySchema = z.object({
   token: z.string().trim().min(10).max(512),
   org: z.string().trim().min(1).max(64),
   project: z.string().trim().min(1).max(64),
+  clientSecret: z
+    .string()
+    .trim()
+    .max(256)
+    .optional()
+    .transform((v) => v || undefined)
+    .refine((v) => v === undefined || v.length >= 16, "too short"),
 });
 
 const posthogSchema = z.object({
@@ -19,11 +30,16 @@ const posthogSchema = z.object({
   region: z.enum(["us", "eu"]),
 });
 
+const githubSchema = z.object({
+  token: z.string().trim().min(20).max(255),
+  repos: z.union([z.string().trim().min(3).max(4_000), z.array(z.string().trim().min(3).max(200)).min(1).max(MAX_PAT_REPOS)]),
+});
+
 type Context = { params: Promise<{ provider: string }> };
 
 export async function POST(request: Request, context: Context) {
   const { provider } = await context.params;
-  if (provider !== "sentry" && provider !== "posthog") {
+  if (provider !== "sentry" && provider !== "posthog" && provider !== "github") {
     return Response.json({ error: "Unknown provider." }, { status: 404 });
   }
   const workspace = await getUserWorkspace().catch(() => undefined);
@@ -36,9 +52,22 @@ export async function POST(request: Request, context: Context) {
   }
   const body = await request.json().catch(() => null);
   try {
+    if (provider === "github") {
+      const parsed = githubSchema.safeParse(body);
+      if (!parsed.success) return Response.json({ error: "Add a token and at least one repo (owner/name)." }, { status: 400 });
+      const result = await saveGithubPat(workspace.id, parsed.data);
+      if (!result.ok) return Response.json({ error: result.message, code: result.code }, { status: 422 });
+      // The webhook secret appears only here (first connect); it is never returned again.
+      return Response.json(
+        { connection: result.connection, checkedVia: result.checkedVia, webhookSecret: result.webhookSecret ?? null },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (provider === "sentry") {
       const parsed = sentrySchema.safeParse(body);
-      if (!parsed.success) return Response.json({ error: "Add a token, an org and a project." }, { status: 400 });
+      if (!parsed.success) {
+        return Response.json({ error: "Add a token, an org and a project (and the full client secret, if you paste one)." }, { status: 400 });
+      }
       return reply(await saveSentry(workspace.id, parsed.data));
     }
     const parsed = posthogSchema.safeParse(body);

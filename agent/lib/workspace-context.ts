@@ -20,12 +20,14 @@ function describeConnection(c: Connection): string {
   switch (c.provider) {
     case "sentry":
       if (config.source === "sentry-app" && !config.project) return `Sentry org \`${config.org ?? "?"}\` (all projects, via the Roary Sentry app)`;
+      if (config.source === "internal") return `Sentry org \`${config.org ?? "?"}\`, project \`${config.project ?? "?"}\` (its alerts start triage automatically)`;
       return `Sentry org \`${config.org ?? "?"}\`, project \`${config.project ?? "?"}\``;
     case "posthog":
       return `PostHog project \`${config.projectId ?? "?"}\` (${config.host ?? "https://us.posthog.com"})`;
     case "github": {
       const repos = Array.isArray(config.repos) ? config.repos.map((r) => `\`${r}\``).join(", ") : "";
-      return `GitHub repos ${repos || "(none selected)"}`;
+      const via = config.mode === "pat" && config.login ? ` (personal access token; your comments and PRs appear as @${config.login})` : "";
+      return `GitHub repos ${repos || "(none selected)"}${via}`;
     }
   }
 }

@@ -8,11 +8,12 @@ import {
   vercelOidc,
   withAuthChallenges,
 } from "eve/channels/auth";
-import { claimSession, findOwner, findSession, GUEST_AUTHENTICATOR, ownerKey, sessionIdFromPath } from "../lib/chat-sessions";
+import { claimSession, findOwner, GUEST_AUTHENTICATOR, ownerKey, sessionIdFromPath } from "../lib/chat-sessions";
 import { GUEST_COOKIE, readCookie, verifyGuestCookie } from "../lib/crypto";
 import { neonAuth } from "../lib/neon-auth";
-import { checkAndCountMessage, guestPolicy, type LimitPolicy, recordUsage, workspacePolicy } from "../lib/usage-limits";
-import { getDemoWorkspace, NEON_AUTH_AUTHENTICATOR, type Principal, resolveWorkspace } from "../lib/workspace";
+import { claimTurnOwner, recordStepSpend, workspaceIdFor } from "../lib/session-events";
+import { checkAndCountMessage, guestPolicy, type LimitPolicy, workspacePolicy } from "../lib/usage-limits";
+import { getDemoWorkspace, NEON_AUTH_AUTHENTICATOR, resolveWorkspace } from "../lib/workspace";
 import { workspaceContext } from "../lib/workspace-context";
 
 /** A browser with a valid `roary_guest` cookie (set by apps/web/proxy.ts): a guest who owns their chats. */
@@ -61,14 +62,6 @@ function ownerKeys(request: Request, caller: AuthResult): string[] {
   // A guest who signs in keeps the chats they started as a guest in this browser.
   if (guestId) keys.push(`${GUEST_AUTHENTICATOR}:${guestId}`);
   return keys;
-}
-
-async function workspaceIdFor(principal: Principal): Promise<number | null> {
-  try {
-    return (await resolveWorkspace(principal)).workspace.id;
-  } catch {
-    return null;
-  }
 }
 
 let demoWorkspaceId: number | undefined;
@@ -164,29 +157,8 @@ export default eveChannel({
   },
   events: {
     // The initiator owns the session even if nobody ever streams it (a no-op once claimed).
-    async "turn.started"(_data, _channel, ctx) {
-      const initiator = ctx.session.auth.initiator;
-      if (!initiator) return;
-      try {
-        await claimSession(ctx.session.id, ownerKey(initiator), await workspaceIdFor(initiator));
-      } catch (error) {
-        console.warn("chat ownership not recorded", { sessionId: ctx.session.id, error: errorName(error) });
-      }
-    },
+    "turn.started": (_data, _channel, ctx) => claimTurnOwner(ctx),
     // Model spend per workspace (and per guest), as AI Gateway reports it on each model call.
-    async "step.completed"(data, _channel, ctx) {
-      if (!data.usage) return;
-      try {
-        const row = await findSession(ctx.session.id);
-        const owner = row?.ownerKey ?? (ctx.session.auth.initiator ? ownerKey(ctx.session.auth.initiator) : "");
-        const workspaceId = row?.workspaceId ?? (await workspaceIdFor(ctx.session.auth.initiator));
-        const scopes: string[] = [];
-        if (workspaceId !== null) scopes.push(`ws:${workspaceId}`);
-        if (owner.startsWith(`${GUEST_AUTHENTICATOR}:`)) scopes.push(`guest:${owner.slice(GUEST_AUTHENTICATOR.length + 1)}`);
-        await recordUsage(scopes, data.usage);
-      } catch (error) {
-        console.warn("model usage not recorded", { sessionId: ctx.session.id, error: errorName(error) });
-      }
-    },
+    "step.completed": (data, _channel, ctx) => recordStepSpend(data, ctx),
   },
 });
