@@ -105,7 +105,7 @@ export function ConnectStack({ notice, onSkip }: { readonly notice?: ReactNode; 
   );
 }
 
-type CardStatus = "demo" | "connected" | "pending" | "error" | "none";
+type CardStatus = "demo" | "connected" | "pending" | "error" | "disconnected" | "none";
 
 function StatusTag({ status }: { readonly status: CardStatus }) {
   const look = {
@@ -113,9 +113,11 @@ function StatusTag({ status }: { readonly status: CardStatus }) {
     connected: ["bg-ok-soft text-ok", "✅ Connected"],
     pending: ["bg-wait-soft text-wait", "⏳ Waiting on approval"],
     error: ["bg-broken-soft text-broken", "❌ Needs attention"],
+    disconnected: ["bg-broken-soft text-broken", "❌ Uninstalled"],
     none: ["bg-label text-ink", "❌ Not connected"],
   } as const;
-  const [color, label] = look[status];
+  // A status this build doesn't know yet (a newer server) must not take the page down.
+  const [color, label] = look[status] ?? look.error;
   return (
     <span
       className={cn(
@@ -133,6 +135,8 @@ function describe(connection: PublicConnection): string {
   if (connection.provider === "github") {
     const repos = (config.repos as string[] | undefined) ?? [];
     if (!config.installationId) return "An org owner has to approve the install on GitHub.";
+    if (connection.status === "disconnected") return "Roary was uninstalled on GitHub. Install it again to reconnect.";
+    if (connection.status === "error") return "GitHub suspended Roary's installation or it lost access. Run Test, or install again.";
     return `${repos.length} repo${repos.length === 1 ? "" : "s"}${repos.length ? ` · ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? "…" : ""}` : ""}`;
   }
   if (connection.provider === "sentry") return `${config.org} / ${config.project}`;

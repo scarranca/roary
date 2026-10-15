@@ -10,8 +10,14 @@ import { GITHUB_CONNECTOR, type Validation } from "./validate";
 // /api/connect/github/callback and a person to finish GitHub's OAuth screen, which hasn't been
 // verified end to end yet. Sentry and PostHog don't depend on it.
 
-export function githubConnectEnabled(): boolean {
-  return process.env.GITHUB_CONNECT_ENABLED === "1";
+/**
+ * Read per request, never at build time, so the switch is per Vercel environment: set
+ * GITHUB_CONNECT_ENABLED=1 on the Preview scope first, Production only after the manual
+ * end-to-end test (docs/CONNECT.md, scripts/github-connect-smoke.ts).
+ */
+export function githubConnectEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.GITHUB_CONNECT_ENABLED?.trim().toLowerCase();
+  return value === "1" || value === "true";
 }
 
 const TIMEOUT_MS = 10_000;

@@ -1,5 +1,5 @@
 import { openConnectionSecret, sealConnectionSecret } from "../../../../agent/lib/crypto";
-import { getConnectionStore } from "./store";
+import { getConnectionStore, InstallationClaimedError } from "./store";
 import { type Connection, type Provider, type PublicConnection, toPublic } from "./types";
 import { GITHUB_CONNECTOR, type Validation, validatePosthog, validateSentry, verifyGithubInstallation } from "./validate";
 
@@ -44,27 +44,34 @@ export async function savePosthog(workspaceId: number, input: { apiKey: string; 
   return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
 }
 
+const CLAIMED: SaveResult = { ok: false, code: "claimed", message: "That installation is already connected to another workspace." };
+
 /**
  * Binds a GitHub App installation to a workspace. First claim wins: an installation
- * already bound elsewhere is refused, so a forged installation_id can't move it.
+ * already bound elsewhere is refused, so a forged installation_id can't move it. The read
+ * below is only the friendly fast path; the unique index on the installation id
+ * (drizzle/0004) is what makes two concurrent claims impossible.
  */
 export async function claimGithubInstallation(workspaceId: number, installationId: string): Promise<SaveResult> {
   const store = await getConnectionStore();
   const owner = await store.findByGithubInstallation(installationId);
-  if (owner && owner.workspaceId !== workspaceId) {
-    return { ok: false, code: "claimed", message: "That installation is already connected to another workspace." };
-  }
+  if (owner && owner.workspaceId !== workspaceId) return CLAIMED;
   const check = await verifyGithubInstallation(installationId);
   if (!check.ok) return failed(check);
-  const connection = await store.upsert({
-    workspaceId,
-    provider: "github",
-    status: "connected",
-    config: { installationId, repos: check.detail.repos },
-    secretCiphertext: null, // Connect mints short-lived installation tokens on demand.
-    connectorRef: GITHUB_CONNECTOR,
-  });
-  return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
+  try {
+    const connection = await store.upsert({
+      workspaceId,
+      provider: "github",
+      status: "connected",
+      config: { installationId, repos: check.detail.repos },
+      secretCiphertext: null, // Connect mints short-lived installation tokens on demand.
+      connectorRef: GITHUB_CONNECTOR,
+    });
+    return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
+  } catch (error) {
+    if (error instanceof InstallationClaimedError) return CLAIMED;
+    throw error;
+  }
 }
 
 /** GitHub said the org owner must approve: remember it so the card can say so. */

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "connections_github_installation_unique" ON "connections" USING btree (("config"->>'installationId')) WHERE "connections"."provider" = 'github' and coalesce("connections"."config"->>'installationId', '') <> '';
