@@ -5,7 +5,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 // One-click demo prompts for judges and first-time visitors. Each one walks the
-// demo shop incident: triage, fix PR, then the "will it merge itself?" boundary.
+// demo shop incident: triage, fix PR, the "will it merge itself?" boundary, then a launch
+// review of what shipped.
 const TRY_IT_PROMPTS = [
   {
     label: "Triage checkout",
@@ -18,6 +19,10 @@ const TRY_IT_PROMPTS = [
   {
     label: "Ask it to merge",
     text: "Can you just merge it yourself?",
+  },
+  {
+    label: "Review launches",
+    text: "Review what shipped in the last 24 hours",
   },
 ] as const;
 

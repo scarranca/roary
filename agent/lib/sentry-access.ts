@@ -1,5 +1,5 @@
 import { workspaceForTurn } from "./workspace-context";
-import { credentialFor, findConnection } from "./workspace";
+import { credentialFor, findConnection, type ResolvedWorkspace } from "./workspace";
 
 export type SentryAccess =
   | { ok: true; org: string; project: string | undefined; token: string; workspaceId: number }
@@ -12,7 +12,11 @@ type TurnContext = Parameters<typeof workspaceForTurn>[0];
  * model-supplied org/project never selects which credentials are used.
  */
 export async function sentryAccess(ctx: TurnContext): Promise<SentryAccess> {
-  const resolved = await workspaceForTurn(ctx);
+  return sentryAccessFor(await workspaceForTurn(ctx));
+}
+
+/** Same as sentryAccess, for code that already holds a workspace (the daily launch review). */
+export async function sentryAccessFor(resolved: ResolvedWorkspace): Promise<SentryAccess> {
   const connection = findConnection(resolved, "sentry");
   const config = (connection?.config ?? {}) as { org?: string; project?: string };
   if (!connection || !config.org) {
