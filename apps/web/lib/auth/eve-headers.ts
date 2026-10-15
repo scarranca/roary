@@ -5,6 +5,11 @@ import { authClient } from "./client";
 // Neon Auth JWTs live 15 minutes; reuse one until a minute before it expires.
 let cached: { token: string; expiresAt: number } | null = null;
 
+/** Forget the cached JWT (call on sign-out, so the next eve request goes out as a guest). */
+export function clearEveAuthCache() {
+  cached = null;
+}
+
 function expiry(token: string): number {
   try {
     const payload = JSON.parse(atob(token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/")));

@@ -8,7 +8,8 @@ type Context = { params: Promise<{ provider: string }> };
 export async function POST(_request: Request, context: Context) {
   const { provider } = await context.params;
   if (!isProvider(provider)) return Response.json({ error: "Unknown provider." }, { status: 404 });
-  const workspace = await getUserWorkspace();
+  const workspace = await getUserWorkspace().catch(() => undefined);
+  if (workspace === undefined) return Response.json({ error: "Couldn't load your workspace right now." }, { status: 503 });
   if (!workspace) return Response.json({ error: "Sign in to test your own stack." }, { status: 401 });
   try {
     const result = await testConnection(workspace.id, provider);

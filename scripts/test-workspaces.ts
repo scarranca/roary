@@ -400,7 +400,10 @@ for (const u of [user, webUser]) {
   if (ids.length) {
     await db.delete(schema.connections).where(inArray(schema.connections.workspaceId, ids));
     await db.delete(schema.workspaceMembers).where(inArray(schema.workspaceMembers.workspaceId, ids));
-    await db.update(schema.incidents).set({ workspaceId: null }).where(inArray(schema.incidents.workspaceId, ids));
+    // Throwaway users' rows go with them (null workspace_id would be backfilled into the demo).
+    await db.delete(schema.incidents).where(inArray(schema.incidents.workspaceId, ids));
+    await db.delete(schema.launches).where(inArray(schema.launches.workspaceId, ids));
+    await db.delete(schema.roaryProfiles).where(inArray(schema.roaryProfiles.workspaceId, ids));
     await db.delete(schema.workspaces).where(inArray(schema.workspaces.id, ids));
   }
   console.log(`cleaned up ${ids.length} test workspace(s)`);

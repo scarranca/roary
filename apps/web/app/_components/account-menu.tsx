@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth/client";
+import { clearEveAuthCache } from "@/lib/auth/eve-headers";
 import { speciesEmoji } from "@/lib/roary-character";
 import { AuthDialog } from "./auth-dialog";
 
@@ -80,7 +81,10 @@ export function AccountMenu() {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <p className="truncate px-2 py-1 text-muted-foreground text-xs">{user.email}</p>
-        <DropdownMenuItem className="uppercase" onSelect={() => void authClient.signOut()}>
+        <DropdownMenuItem className="uppercase" onSelect={() => {
+            clearEveAuthCache();
+            void authClient.signOut();
+          }}>
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>

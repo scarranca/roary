@@ -46,7 +46,7 @@ export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number];
 
 // One row per (workspace, provider). `config` is non-secret routing (github: {installationId,
 // repos[]}; sentry: {org, project}; posthog: {projectId, host}). Tokens live encrypted in
-// `secretCiphertext` (AES-GCM, agent/lib/workspace.ts) or behind a Vercel Connect connector
+// `secretCiphertext` (AES-GCM, agent/lib/crypto.ts) or behind a Vercel Connect connector
 // in `connectorRef`, never in `config`.
 export const connections = pgTable(
   "connections",
