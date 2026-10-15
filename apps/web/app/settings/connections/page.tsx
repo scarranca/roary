@@ -24,7 +24,10 @@ const GITHUB_ERROR_DETAILS: Record<string, string> = {
 // Outcomes of the Sentry App round trip (/api/connect/sentry/callback).
 const SENTRY_NOTICES: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Sentry connected. New issues in your org now start a Roary triage." },
-  start_here: { ok: false, text: "Roary was installed from Sentry directly. Click Install Roary in Sentry here so we know which workspace it's for." },
+  start_here: {
+    ok: false,
+    text: "Roary was installed from Sentry directly, so we can't tell which workspace it's for. Uninstall it in Sentry (Settings → Integrations → Roary), then click Install Roary in Sentry here.",
+  },
   signin: { ok: false, text: "Sign in first, then install Roary in Sentry." },
   unavailable: { ok: false, text: "The Sentry app isn't set up on this server yet." },
   error: { ok: false, text: "Sentry install didn't finish." },

@@ -1,7 +1,7 @@
 import { defineChannel, POST } from "eve/channels";
 import { db, schema } from "../lib/db";
 import { type IssueRef, issueFromPayload, sentryAppCredentials, verifySentrySignature } from "../lib/sentry-app";
-import { claimIncident, findSentryInstallation, markSentryInstallationDisconnected } from "../lib/sentry-app-store";
+import { claimIncident, findSentryInstallation, markSentryInstallationDisconnected, sentryConnectionUsable } from "../lib/sentry-app-store";
 import { getDemoWorkspace, SENTRY_WEBHOOK_AUTHENTICATOR } from "../lib/workspace";
 
 // Sentry webhooks → headless triage sessions. Two senders share this URL, told apart by which
@@ -70,7 +70,7 @@ export default defineChannel({
         }
         // Unknown or uninstalled installations get a 200, so Sentry doesn't disable the webhook.
         const connection = installationUuid ? await findSentryInstallation(installationUuid) : undefined;
-        if (!connection || connection.status !== "connected") return new Response("unknown installation", { status: 200 });
+        if (!connection || !sentryConnectionUsable(connection.status)) return new Response("unknown installation", { status: 200 });
         const issue = issueFromPayload(resource, body);
         if (!issue) return new Response("ignored", { status: 200 });
 

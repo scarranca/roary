@@ -226,11 +226,12 @@ function ProviderCard({
               <ExternalLinkIcon className="size-3.5" />
             </a>
           ) : null}
-          {provider.id === "sentry" && sentryAppEnabled ? (
+          {/* Hidden while the app is installed: Sentry's install page refuses a second install per org. */}
+          {provider.id === "sentry" &&
+          sentryAppEnabled &&
+          !(connection?.status !== "disconnected" && (connection?.config as { source?: string } | undefined)?.source === "sentry-app") ? (
             <a className={cn(BUTTON, "bg-safety text-ink")} href="/api/connect/sentry/install" rel="noopener" target="_blank">
-              {connection?.status === "connected" && (connection.config as { source?: string }).source === "sentry-app"
-                ? "Reinstall in Sentry"
-                : "Install Roary in Sentry"}
+              {connection?.status === "disconnected" ? "Install again in Sentry" : "Install Roary in Sentry"}
               <ExternalLinkIcon className="size-3.5" />
             </a>
           ) : null}

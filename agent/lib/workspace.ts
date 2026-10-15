@@ -3,7 +3,7 @@ import { openConnectionSecret } from "./crypto";
 import { db, schema } from "./db";
 import type { ConnectionProvider } from "./schema";
 import { sentryAppConfig } from "./sentry-app";
-import { findSentryInstallation, sentryAppToken } from "./sentry-app-store";
+import { findSentryInstallation, sentryAppToken, sentryConnectionUsable } from "./sentry-app-store";
 
 export type Workspace = typeof schema.workspaces.$inferSelect;
 export type Connection = typeof schema.connections.$inferSelect;
@@ -113,7 +113,7 @@ export async function findWorkspaceByGithubInstallation(installationId: string):
 /** The workspace whose connected Sentry App installation this is (public integration). */
 export async function findWorkspaceBySentryInstallation(installationUuid: string): Promise<Workspace | undefined> {
   const row = await findSentryInstallation(installationUuid);
-  if (!row || row.status !== "connected") return undefined;
+  if (!row || !sentryConnectionUsable(row.status)) return undefined;
   const [workspace] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, row.workspaceId)).limit(1);
   return workspace;
 }

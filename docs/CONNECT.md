@@ -172,7 +172,7 @@ Sentry issue webhook ──▶ POST /sentry/webhook (agent/channels/sentry-webho
    else (flag on) with SENTRY_CLIENT_SECRET? → public path:
      installation.created  → 200, nothing (no state there; the callback does the exchange)
      installation.deleted  → connection status "disconnected", token dropped
-     issue / event_alert   → installation.uuid → connection (status connected) → claim incident in that
+     issue / event_alert   → installation.uuid → connection (not disconnected) → claim incident in that
                              workspace → start a session as {authenticator "sentry-webhook",
                              attributes {sentry_app: "public", installation_uuid}} → resolveWorkspace
                              routes it to that workspace; unknown/uninstalled → 200 "unknown installation"
@@ -190,7 +190,7 @@ credentialFor(row) for a Sentry App row: token as is, or — within 5 min of exp
   webhook), so a successful exchange proves the install; the signed state + nonce cookie bind it
   to the workspace of whoever clicked the button. A connected installation can't be claimed by a
   second workspace. Installs started from Sentry's own Integrations page (no `state`) land on
-  `/settings/connections?sentry=start_here`: click the button in Roary to bind one.
+  `/settings/connections?sentry=start_here`: uninstall Roary in Sentry, then install from the button in Roary (Sentry allows one install per org). The button hides while the app is installed.
 - **Dedupe per workspace:** `incidents.sentry_issue_id` is globally unique, but short ids
   (`WEB-1`) aren't unique across orgs. The claim uses the short id, and if *another* workspace holds
   it, falls back to `<shortId>@ws<workspaceId>` (the triage message tells Roary which key to save).
@@ -217,7 +217,7 @@ credentialFor(row) for a Sentry App row: token as is, or — within 5 min of exp
 3. **Try it on a preview** (unpublished integrations can be installed in the org that owns them):
    sign in → `/settings/connections` → *Install Roary in Sentry* → approve → back to the page with
    "Sentry connected". Trigger an error in a project of that org → a new incident in that workspace.
-   Point the Redirect/Webhook URLs at the preview host while testing, then back to production.
+   Point the Redirect/Webhook URLs at the preview host while testing, then back to production. In Sentry (Settings → Integrations → Roary) confirm the install shows **Installed**, not Pending (the verify PUT is best-effort).
 4. **Publish** — on the integration page, *Publish* → fill Sentry's form (description, logo, docs
    link, privacy policy, support contact). Sentry reviews it; until approved only the owner org can install.
 5. **Enable in production**: add the same four env vars to Production and redeploy.

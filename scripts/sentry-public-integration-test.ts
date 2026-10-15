@@ -229,6 +229,11 @@ try {
   const retryB = await post("issue", issueBody(uuidB, { id: "9002", shortId, title: "Same short id, other org" }), CLIENT_SECRET);
   check("workspace B retry → already triaged", retryB.text === "already triaged" && retryB.sent.length === 0);
 
+  await db.update(schema.connections).set({ status: "error" }).where(eq(schema.connections.workspaceId, wsB!.id));
+  const erroredB = await ws.resolveWorkspace(other.sent[0]!.auth);
+  check("a failed Test (status error) doesn't cut the agent off: still routes + token", erroredB.workspace.id === wsB!.id && typeof (await ws.credentialFor(erroredB, ws.findConnection(erroredB, "sentry"), undefined)) === "string");
+  await db.update(schema.connections).set({ status: "connected" }).where(eq(schema.connections.workspaceId, wsB!.id));
+
   const unknown = await post("issue", issueBody(randomUUID(), { id: "9003", shortId: `${shortId}-X`, title: "t" }), CLIENT_SECRET);
   check("unknown installation → 200, nothing started", unknown.status === 200 && unknown.sent.length === 0);
   const created = await post("installation", installationBody("created", uuidA), CLIENT_SECRET);

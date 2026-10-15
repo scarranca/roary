@@ -21,6 +21,9 @@ type ConnectionRow = typeof schema.connections.$inferSelect;
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
+/** "error" (a failed Test click) keeps the token usable, like a pasted token; uninstalled doesn't. */
+export const sentryConnectionUsable = (status: string) => status !== "disconnected" && status !== "disabled";
+
 function needsRefresh(config: SentryAppConfig): boolean {
   return Date.parse(config.expiresAt) - Date.now() < REFRESH_MARGIN_MS;
 }
@@ -32,7 +35,7 @@ function needsRefresh(config: SentryAppConfig): boolean {
  */
 export async function sentryAppToken(connection: ConnectionRow): Promise<string | null> {
   const config = sentryAppConfig(connection);
-  if (!config || !connection.secretCiphertext || connection.status !== "connected") return null;
+  if (!config || !connection.secretCiphertext || !sentryConnectionUsable(connection.status)) return null;
   if (!needsRefresh(config)) return openConnectionSecret({ ...connection, secretCiphertext: connection.secretCiphertext });
 
   const app = sentryAppCredentials();
@@ -41,7 +44,7 @@ export async function sentryAppToken(connection: ConnectionRow): Promise<string 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`roary-sentry-refresh:${connection.id}`}))`);
     const [row] = await tx.select().from(schema.connections).where(eq(schema.connections.id, connection.id)).limit(1);
     const current = row ? sentryAppConfig(row) : null;
-    if (!row || !current || !row.secretCiphertext || row.status !== "connected") return null;
+    if (!row || !current || !row.secretCiphertext || !sentryConnectionUsable(row.status)) return null;
     if (!needsRefresh(current)) return openConnectionSecret({ ...row, secretCiphertext: row.secretCiphertext });
 
     const fresh = await refreshInstallationToken(app, current.installationUuid);
@@ -108,7 +111,7 @@ export async function claimSentryInstallation(
   if (!UUID.test(input.installationUuid) || !/^[0-9a-z]{16,128}$/i.test(input.code)) return { ok: false, code: "bad_input" };
 
   const owner = await findSentryInstallation(input.installationUuid);
-  if (owner && owner.workspaceId !== workspaceId && owner.status === "connected") return { ok: false, code: "claimed" };
+  if (owner && owner.workspaceId !== workspaceId && sentryConnectionUsable(owner.status)) return { ok: false, code: "claimed" };
 
   let token: Awaited<ReturnType<typeof exchangeGrantCode>>;
   try {
