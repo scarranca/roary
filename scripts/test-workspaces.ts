@@ -4,7 +4,8 @@
 //   1. a Neon branch that is NOT production:  neon checkout dev-<you> && neon env pull
 //   2. npm run db:migrate
 //   3. npx eve dev --no-ui            (port 2000; .env.local needs CONNECTIONS_ENCRYPTION_KEY)
-//   4. npx tsx --env-file=.env.local scripts/test-workspaces.ts [--keep] [--only=a,b,c]
+//   4. npx next dev apps/web -p 3101   (same env; needs NEON_AUTH_COOKIE_SECRET, for case d)
+//   5. npx tsx --env-file=.env.local scripts/test-workspaces.ts [--keep] [--only=a,b,c,d]
 //
 // Creates a throwaway Neon Auth user (random example.com email, password never printed) and,
 // unless --keep, deletes its workspace rows afterwards. Spends model credits: ~3 short turns.
@@ -12,12 +13,15 @@ import { eq, inArray } from "drizzle-orm";
 import { Client, type MessageStreamEvent } from "eve/client";
 import { db, schema } from "../agent/lib/db";
 import { sentryAccess } from "../agent/lib/sentry-access";
-import { encryptSecret, NEON_AUTH_AUTHENTICATOR } from "../agent/lib/workspace";
+import { sealConnectionSecret } from "../agent/lib/crypto";
+import { credentialFor, findConnection, NEON_AUTH_AUTHENTICATOR, resolveWorkspace } from "../agent/lib/workspace";
 
 const EVE_URL = process.env.EVE_URL ?? "http://127.0.0.1:2000";
 const args = process.argv.slice(2);
 const keep = args.includes("--keep");
-const only = args.find((a) => a.startsWith("--only="))?.slice(7).split(",") ?? ["a", "b", "c"];
+const only = args.find((a) => a.startsWith("--only="))?.slice(7).split(",") ?? ["a", "b", "c", "d"];
+// (d) drives the real web routes: `next dev apps/web -p 3101` on the same non-production env.
+const WEB_URL = process.env.WEB_URL ?? "http://localhost:3101";
 
 if (process.env.NEON_BRANCH === "production" || !process.env.NEON_BRANCH) {
   console.error("Refusing to run: point .env.local at a non-production Neon branch (NEON_BRANCH).");
@@ -144,7 +148,12 @@ if (only.includes("b") || only.includes("c")) {
   user = await signUpThrowawayUser();
 
   // A forged/garbled Neon token must be rejected, not downgraded to guest.
-  const bad = (await user.token()).replace(/.$/, (ch) => (ch === "A" ? "B" : "A"));
+  // Flip a character in the middle of the signature: the last base64url char of a 64-byte Ed25519
+  // signature is partly padding bits, so changing it can leave the signature bytes unchanged.
+  const good = await user.token();
+  const sigStart = good.lastIndexOf(".") + 1;
+  const mid = sigStart + 20;
+  const bad = good.slice(0, mid) + (good[mid] === "A" ? "B" : "A") + good.slice(mid + 1);
   const res = await fetch(`${EVE_URL}/eve/v1/session`, { method: "POST", headers: { authorization: `Bearer ${bad}` } });
   check("(b) tampered Neon Auth JWT is rejected", res.status === 401, `POST /eve/v1/session -> ${res.status}`);
 }
@@ -199,7 +208,7 @@ if (user && signedIn && only.includes("c")) {
       provider: "sentry",
       status: "connected",
       config: { org: "roary", project: "javascript-nextjs-k4" },
-      secretCiphertext: encryptSecret(process.env.SENTRY_AUTH_TOKEN!),
+      secretCiphertext: sealConnectionSecret(ws.id, "sentry", process.env.SENTRY_AUTH_TOKEN!),
     })
     .onConflictDoNothing();
   console.log(`inserted sentry connection for workspace ${ws.id} (token encrypted)`);
@@ -229,8 +238,165 @@ if (user && signedIn && only.includes("c")) {
   check("(c) still one workspace for the user", (await userWorkspaces(user.userId)).length === 1, "no duplicate workspace");
 }
 
-if (user && !keep) {
-  const ids = (await userWorkspaces(user.userId)).map((r) => r.workspace.id);
+// (d) END TO END: a brand-new signed-in user saves Sentry + PostHog through the real web routes
+// (/api/connections/*, encrypted by the web app), then asks Roary in eve: Roary must use THAT
+// workspace's credentials, decrypted by the agent. A guest still gets the demo afterwards.
+let webUser: { userId: string; cookie: string } | undefined;
+if (only.includes("d")) {
+  const origin = WEB_URL;
+  const unauth = await fetch(`${WEB_URL}/api/connections`);
+  check("(d) /api/connections without a session is refused", unauth.status === 401 || unauth.status === 403, `GET -> ${unauth.status}`);
+  const unauthPost = await fetch(`${WEB_URL}/api/connections/sentry`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: process.env.SENTRY_AUTH_TOKEN, org: "roary", project: "javascript-nextjs-k4" }),
+  });
+  check("(d) saving a connection without a session is refused", unauthPost.status === 401, `POST -> ${unauthPost.status}`);
+
+  // Sign up through the web app's own Neon Auth proxy, like the browser does.
+  const email = `roary-e2e-${Date.now()}@example.com`;
+  const signUp = await fetch(`${WEB_URL}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({ email, password: `${crypto.randomUUID()}Aa1!`, name: "Roary e2e test" }),
+  });
+  if (!signUp.ok) throw new Error(`web sign-up failed: ${signUp.status} ${(await signUp.text()).slice(0, 200)}`);
+  const cookie = signUp.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  const userId = ((await signUp.json()) as { user: { id: string } }).user.id;
+  webUser = { userId, cookie };
+  console.log(`signed up web user ${userId} through ${WEB_URL}/api/auth`);
+  const web = (path: string, init: RequestInit = {}) =>
+    fetch(`${WEB_URL}${path}`, { ...init, headers: { ...(init.headers as Record<string, string>), cookie, origin } });
+
+  const before = await web("/api/connections");
+  const beforeBody = (await before.json()) as { signedIn?: boolean; connections?: Record<string, unknown> };
+  check(
+    "(d) signed-in user starts with an empty stack",
+    before.status === 200 && beforeBody.signedIn === true && Object.values(beforeBody.connections ?? {}).every((c) => c === null),
+    `GET -> ${before.status}, signedIn=${beforeBody.signedIn}`,
+  );
+
+  const saveSentry = await web("/api/connections/sentry", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: process.env.SENTRY_AUTH_TOKEN, org: "roary", project: "javascript-nextjs-k4" }),
+  });
+  const savePosthog = await web("/api/connections/posthog", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ apiKey: process.env.POSTHOG_API_KEY, projectId: "665339", region: "us" }),
+  });
+  check("(d) Sentry saved through POST /api/connections/sentry", saveSentry.status === 200, `-> ${saveSentry.status}`);
+  check("(d) PostHog saved through POST /api/connections/posthog", savePosthog.status === 200, `-> ${savePosthog.status}`);
+
+  const after = await web("/api/connections");
+  const afterText = await after.text();
+  const afterBody = JSON.parse(afterText) as { connections: Record<string, { status?: string } | null> };
+  check(
+    "(d) the stack lists both as connected and never returns a secret",
+    afterBody.connections.sentry?.status === "connected" &&
+      afterBody.connections.posthog?.status === "connected" &&
+      !afterText.includes("secretCiphertext") &&
+      !afterText.includes(process.env.SENTRY_AUTH_TOKEN!) &&
+      !afterText.includes(process.env.POSTHOG_API_KEY!),
+    `sentry=${afterBody.connections.sentry?.status} posthog=${afterBody.connections.posthog?.status}`,
+  );
+
+  // The rows the web app wrote, read by the agent's own code.
+  const [ws] = await userWorkspaces(userId);
+  const rows = ws ? await db.select().from(schema.connections).where(eq(schema.connections.workspaceId, ws.workspace.id)) : [];
+  const sentryRow = rows.find((r) => r.provider === "sentry");
+  const posthogRow = rows.find((r) => r.provider === "posthog");
+  check(
+    "(d) rows are in the user's own workspace, encrypted at rest",
+    ws?.workspace.isDemo === false &&
+      !!sentryRow?.secretCiphertext?.startsWith("v1.") &&
+      !sentryRow.secretCiphertext.includes(process.env.SENTRY_AUTH_TOKEN!) &&
+      !!posthogRow?.secretCiphertext?.startsWith("v1."),
+    `workspace ${ws?.workspace.id}, ${rows.length} row(s)`,
+  );
+  const principal = { authenticator: NEON_AUTH_AUTHENTICATOR, principalType: "user", principalId: userId };
+  const resolvedForAgent = await resolveWorkspace(principal);
+  const access = await sentryAccess({ session: { auth: { current: principal, initiator: principal } } });
+  const posthogKey = await credentialFor(resolvedForAgent, findConnection(resolvedForAgent, "posthog"), undefined);
+  check(
+    "(d) secrets saved by the web app decrypt in the agent",
+    access.ok && access.workspaceId === ws?.workspace.id && access.token === process.env.SENTRY_AUTH_TOKEN && posthogKey === process.env.POSTHOG_API_KEY,
+    access.ok ? `sentry workspace ${access.workspaceId}, posthog key matches: ${posthogKey === process.env.POSTHOG_API_KEY}` : access.error,
+  );
+
+  // Ask Roary as this user (JWT from the same web session).
+  const tokenRes = await web("/api/auth/token");
+  const jwt = ((await tokenRes.json().catch(() => ({}))) as { token?: string }).token;
+  if (!jwt) throw new Error(`web /api/auth/token failed: ${tokenRes.status}`);
+  const asWebUser = new Client({ host: EVE_URL, auth: { bearer: async () => jwt }, redirect: "error" });
+  const turn = await runTurn(asWebUser);
+  show("(d) web-connected user asks Roary", turn);
+  const sentryCalls = turn.calls.filter(isSentry);
+  check(
+    "(d) Roary uses this workspace's Sentry",
+    sentryCalls.some(ok) && /JAVASCRIPT-NEXTJS-K4|lineTotal/i.test(turn.reply),
+    `${sentryCalls.length} Sentry call(s), ${sentryCalls.filter(ok).length} ok`,
+  );
+  check(
+    "(d) Roary uses this workspace's PostHog",
+    turn.calls.filter(isPosthog).some(ok),
+    `${turn.calls.filter(isPosthog).length} PostHog call(s), ${turn.calls.filter(isPosthog).filter(ok).length} ok`,
+  );
+
+  // Proof the agent reads THIS row and not the demo env token: re-seal the user's Sentry row with
+  // a marker credential and the agent hands that marker out for this user, while a guest still
+  // resolves to the demo workspace and the env token.
+  const marker = `sntrys_marker_${Date.now()}`;
+  await db
+    .update(schema.connections)
+    .set({ secretCiphertext: sealConnectionSecret(ws!.workspace.id, "sentry", marker) })
+    .where(eq(schema.connections.id, sentryRow!.id));
+  const markerAccess = await sentryAccess({ session: { auth: { current: principal, initiator: principal } } });
+  const guest = await sentryAccess({ session: { auth: { current: null, initiator: null } } });
+  check(
+    "(d) the agent's Sentry credential comes from the user's row; a guest still gets the demo",
+    markerAccess.ok && markerAccess.token === marker && guest.ok && guest.token === process.env.SENTRY_AUTH_TOKEN && guest.workspaceId !== ws!.workspace.id,
+    `user token is the marker: ${markerAccess.ok && markerAccess.token === marker}; guest workspace ${guest.ok ? guest.workspaceId : "?"} uses the env token: ${guest.ok && guest.token === process.env.SENTRY_AUTH_TOKEN}`,
+  );
+
+  // GitHub webhook routing (model-free): an event from an installation this workspace connected
+  // resolves to it; the demo shop's own installation (not claimed by anyone) stays in the demo.
+  const fakeInstallation = String(900_000_000 + Math.floor(Math.random() * 1_000_000));
+  await db.insert(schema.connections).values({
+    workspaceId: ws!.workspace.id,
+    provider: "github",
+    status: "connected",
+    config: { installationId: fakeInstallation, repos: ["acme/web"] },
+    connectorRef: "github/roary",
+  });
+  const ghPrincipal = (installation_id: string) => ({
+    authenticator: "github-webhook",
+    principalType: "user",
+    principalId: "github:1",
+    attributes: { installation_id, repository: "acme/web" },
+  });
+  const routed = await resolveWorkspace(ghPrincipal(fakeInstallation));
+  const demoRouted = await resolveWorkspace(ghPrincipal("171490641"));
+  check(
+    "(d) GitHub events route to the workspace that connected the installation; others go to the demo",
+    routed.workspace.id === ws!.workspace.id && demoRouted.workspace.isDemo,
+    `installation ${fakeInstallation} -> workspace ${routed.workspace.id}; 171490641 -> ${demoRouted.workspace.isDemo ? "demo" : demoRouted.workspace.id}`,
+  );
+
+  // The guest turn after all this still lands on the demo shop.
+  const guestTurn = await runTurn(anonymous);
+  show("(d) guest after the user connected", guestTurn);
+  check(
+    "(d) guest still gets the demo",
+    guestTurn.calls.filter(isSentry).some(ok) && /JAVASCRIPT-NEXTJS-K4|lineTotal|checkout/i.test(guestTurn.reply),
+    `${guestTurn.calls.filter(isSentry).filter(ok).length} ok Sentry call(s)`,
+  );
+}
+
+for (const u of [user, webUser]) {
+  if (!u || keep) continue;
+  const ids = (await userWorkspaces(u.userId)).map((r) => r.workspace.id);
   if (ids.length) {
     await db.delete(schema.connections).where(inArray(schema.connections.workspaceId, ids));
     await db.delete(schema.workspaceMembers).where(inArray(schema.workspaceMembers.workspaceId, ids));

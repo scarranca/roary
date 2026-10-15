@@ -1,8 +1,12 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
-// AES-256-GCM for connection secrets. Format: `v1.<iv>.<tag>.<ciphertext>` (base64url).
-// The additional data binds a ciphertext to its row (`<workspaceId>:<provider>`), so a
-// secret copied into another workspace's row fails to decrypt instead of leaking.
+// The ONE encryption helper for connection secrets, shared by the web app (apps/web, which
+// writes them) and the agent (agent/lib/workspace.ts, which reads them). No Next or eve imports.
+//
+// AES-256-GCM with a subkey derived (HKDF-SHA256, info "roary:connections-secret") from
+// CONNECTIONS_ENCRYPTION_KEY. Format: `v1.<iv>.<tag>.<ciphertext>` (base64url). The additional
+// data binds a ciphertext to its row (`<workspaceId>:<provider>`, see secretAad), so a secret
+// copied into another workspace's row fails to decrypt instead of leaking.
 
 const VERSION = "v1";
 
@@ -57,6 +61,16 @@ export function decryptSecret(payload: string, aad: string): string {
 
 export function secretAad(workspaceId: number, provider: string) {
   return `${workspaceId}:${provider}`;
+}
+
+/** Encrypts a provider credential for the `connections` row (workspaceId, provider). */
+export function sealConnectionSecret(workspaceId: number, provider: string, plaintext: string): string {
+  return encryptSecret(plaintext, secretAad(workspaceId, provider));
+}
+
+/** Decrypts a `connections.secret_ciphertext` with that row's own AAD. */
+export function openConnectionSecret(row: { workspaceId: number; provider: string; secretCiphertext: string }): string {
+  return decryptSecret(row.secretCiphertext, secretAad(row.workspaceId, row.provider));
 }
 
 /** `<payload>.<hmac>`: tamper-evident, not secret. Used for the GitHub install `state`. */

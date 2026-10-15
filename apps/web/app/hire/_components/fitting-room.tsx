@@ -238,7 +238,7 @@ export function FittingRoom() {
               }}
             />
           ) : null}
-          {station === AT.stack ? <ConnectStack /> : null}
+          {station === AT.stack ? <ConnectStack onSkip={() => goTo(AT.offer)} /> : null}
           {station === AT.offer ? (
             <OfferStation logo={look.logo} logoPatch={look.logoPatch} name={displayName} onSign={sign} signed={signedAt !== undefined} summary={summary} />
           ) : null}

@@ -1,18 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { hasEncryptionKey } from "@/lib/connections/crypto";
+import { hasEncryptionKey } from "../../../../../../../agent/lib/crypto";
 import { NONCE_COOKIE, STATE_TTL_MS, startInstall } from "@/lib/connections/github-state";
-import { getCurrentWorkspace } from "@/lib/connections/workspace";
+import { githubConnectEnabled } from "@/lib/connections/github-user";
+import { getUserWorkspace } from "@/lib/connections/workspace";
 
 // "Install Roary on your repos": off to GitHub with a state bound to this workspace.
 export async function GET(request: NextRequest) {
   const back = new URL("/settings/connections", request.nextUrl.origin);
-  const workspace = await getCurrentWorkspace();
-  if (workspace.kind === "demo") {
-    back.searchParams.set("github", "signin");
+  if (!githubConnectEnabled() || !hasEncryptionKey()) {
+    back.searchParams.set("github", "unavailable");
     return NextResponse.redirect(back);
   }
-  if (!hasEncryptionKey()) {
-    back.searchParams.set("github", "unavailable");
+  const workspace = await getUserWorkspace();
+  if (!workspace) {
+    back.searchParams.set("github", "signin");
     return NextResponse.redirect(back);
   }
   const { nonce, url } = startInstall(workspace.id);

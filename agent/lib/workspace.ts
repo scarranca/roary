@@ -1,5 +1,5 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { openConnectionSecret } from "./crypto";
 import { db, schema } from "./db";
 import type { ConnectionProvider } from "./schema";
 
@@ -10,16 +10,21 @@ export type ResolvedWorkspace = { workspace: Workspace; connections: Connection[
 /** The authenticator name agent/channels/eve.ts stamps on a verified Neon Auth user. */
 export const NEON_AUTH_AUTHENTICATOR = "neon-auth";
 
+/** The authenticator eve's GitHub channel stamps on webhook-started turns (defaultGitHubAuth). */
+export const GITHUB_WEBHOOK_AUTHENTICATOR = "github-webhook";
+
 /** The subset of eve's SessionAuthContext this module reads. */
 export type Principal = {
   readonly authenticator: string;
   readonly principalType: string;
   readonly principalId: string;
+  readonly attributes?: Readonly<Record<string, string | readonly string[] | undefined>>;
 } | null | undefined;
 
 /**
  * Only a verified Neon Auth user gets a workspace of their own. Everyone else (anonymous
- * browsers, `localDev()`, Vercel OIDC callers, Sentry webhooks, GitHub events) is a guest.
+ * browsers, `localDev()`, Vercel OIDC callers, Sentry webhooks) is a guest. GitHub webhook
+ * turns are routed by installation in resolveWorkspace.
  */
 export function workspaceUserId(principal: Principal): string | null {
   return principal?.authenticator === NEON_AUTH_AUTHENTICATOR && principal.principalType === "user"
@@ -75,12 +80,45 @@ async function createUserWorkspace(userId: string): Promise<Workspace> {
   });
 }
 
-/** The caller's workspace and its connections. Guests resolve to the demo workspace. */
+/**
+ * The workspace that connected this GitHub App installation, if any. GitHub webhook turns carry
+ * the installation id (defaultGitHubAuth → attributes.installation_id). An installation nobody
+ * claimed (the demo shop's own install) stays in the demo workspace.
+ */
+export async function findWorkspaceByGithubInstallation(installationId: string): Promise<Workspace | undefined> {
+  if (!/^\d{1,20}$/.test(installationId)) return undefined;
+  const [row] = await db
+    .select({ workspace: schema.workspaces })
+    .from(schema.connections)
+    .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.connections.workspaceId))
+    .where(
+      and(
+        eq(schema.connections.provider, "github"),
+        sql`${schema.connections.config}->>'installationId' = ${installationId}`,
+      ),
+    )
+    .limit(1);
+  return row?.workspace;
+}
+
+/**
+ * The caller's workspace and its connections:
+ * - a verified Neon Auth user → their own workspace (created on first touch);
+ * - a GitHub webhook turn → the workspace that connected that installation, else the demo;
+ * - everyone else (guests, localDev, Vercel OIDC, the Sentry webhook) → the demo workspace.
+ */
 export async function resolveWorkspace(principal: Principal): Promise<ResolvedWorkspace> {
   const userId = workspaceUserId(principal);
-  const workspace = userId
-    ? ((await findUserWorkspace(userId)) ?? (await createUserWorkspace(userId)))
-    : await getDemoWorkspace();
+  let workspace: Workspace | undefined;
+  if (userId) {
+    workspace = (await findUserWorkspace(userId)) ?? (await createUserWorkspace(userId));
+  } else if (principal?.authenticator === GITHUB_WEBHOOK_AUTHENTICATOR) {
+    const installationId = principal.attributes?.installation_id;
+    if (typeof installationId === "string" && installationId) {
+      workspace = await findWorkspaceByGithubInstallation(installationId);
+    }
+  }
+  workspace ??= await getDemoWorkspace();
   return { workspace, connections: await loadConnections(workspace.id) };
 }
 
@@ -89,13 +127,32 @@ export function findConnection(resolved: ResolvedWorkspace, provider: Connection
 }
 
 /**
- * The single place a provider token is chosen: the connection's own encrypted secret, or the
- * app-level env token, but the env token only for the demo workspace. A signed-in workspace
- * never falls back to Roary's demo credentials.
+ * The single place a provider credential is chosen, in this order:
+ * 1. the connection's own secret (AES-GCM, agent/lib/crypto.ts, AAD = its workspace + provider),
+ *    as saved by the web app's /api/connections routes;
+ * 2. its Vercel Connect connector (`connector_ref`): an app token from that connector, pinned to
+ *    the workspace's installation for `github`;
+ * 3. the app-level env token, but only for the demo workspace.
+ * A signed-in workspace never falls back to Roary's demo credentials.
  */
-export function tokenFor(resolved: ResolvedWorkspace, connection: Connection | undefined, envToken: string | undefined): string | null {
+export async function credentialFor(
+  resolved: ResolvedWorkspace,
+  connection: Connection | undefined,
+  envToken: string | undefined,
+): Promise<string | null> {
   if (!connection) return null;
-  if (connection.secretCiphertext) return decryptSecret(connection.secretCiphertext);
+  if (connection.secretCiphertext) {
+    return openConnectionSecret({ ...connection, secretCiphertext: connection.secretCiphertext });
+  }
+  if (connection.connectorRef && !resolved.workspace.isDemo) {
+    const installationId = (connection.config as { installationId?: unknown }).installationId;
+    if (connection.provider === "github" && !installationId) return null;
+    const { getToken } = await import("@vercel/connect");
+    return getToken(connection.connectorRef, {
+      subject: { type: "app" },
+      ...(installationId ? { installationId: String(installationId) } : {}),
+    });
+  }
   return resolved.workspace.isDemo ? (envToken ?? null) : null;
 }
 
@@ -107,34 +164,4 @@ export function describeWorkspace({ workspace, connections }: ResolvedWorkspace)
     isDemo: workspace.isDemo,
     connections: connections.map((c) => ({ provider: c.provider, status: c.status, config: c.config })),
   };
-}
-
-// --- secrets: AES-256-GCM, key = CONNECTIONS_ENCRYPTION_KEY (32 bytes, base64) ---------------
-
-const CIPHER_VERSION = "v1";
-
-function encryptionKey(): Buffer {
-  const raw = process.env.CONNECTIONS_ENCRYPTION_KEY;
-  if (!raw) throw new Error("CONNECTIONS_ENCRYPTION_KEY is not configured.");
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32) throw new Error("CONNECTIONS_ENCRYPTION_KEY must be 32 bytes, base64-encoded.");
-  return key;
-}
-
-/** Encrypts a provider token as `v1.<iv>.<tag>.<ciphertext>` (base64url parts). */
-export function encryptSecret(plaintext: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  return [CIPHER_VERSION, iv, cipher.getAuthTag(), ciphertext]
-    .map((part) => (typeof part === "string" ? part : part.toString("base64url")))
-    .join(".");
-}
-
-export function decryptSecret(payload: string): string {
-  const [version, iv, tag, ciphertext] = payload.split(".");
-  if (version !== CIPHER_VERSION || !iv || !tag || !ciphertext) throw new Error("Unrecognized secret format.");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
 }

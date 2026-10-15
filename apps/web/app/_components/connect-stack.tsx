@@ -7,7 +7,9 @@ import type { Provider, PublicConnection } from "@/lib/connections/types";
 import { cn } from "@/lib/utils";
 import { AuthDialog } from "./auth-dialog";
 
-type Stack = { signedIn: boolean; connections: Record<Provider, PublicConnection | null> };
+type Stack = { signedIn: boolean; githubEnabled?: boolean; connections: Record<Provider, PublicConnection | null> };
+
+const NO_CONNECTIONS = { github: null, sentry: null, posthog: null } as const;
 
 const FIELD =
   "w-full rounded-[3px] border-2 border-ink bg-card px-3 py-2 font-mono text-sm outline-none focus-visible:outline-2 focus-visible:outline-safety";
@@ -19,8 +21,11 @@ const PROVIDERS: { id: Provider; name: string; role: string; demo: string }[] = 
   { id: "posthog", name: "PostHog", role: "Counts who's affected · launch impact", demo: "Project 665339 · US" },
 ];
 
-/** "Connect your stack": GitHub, Sentry and PostHog cards. Used in /hire and /settings/connections. */
-export function ConnectStack({ notice }: { readonly notice?: ReactNode }) {
+/**
+ * "Connect your stack": GitHub, Sentry and PostHog cards. Used in /hire and /settings/connections.
+ * Guests are never blocked: `onSkip` (the /hire station) moves on with the demo shop.
+ */
+export function ConnectStack({ notice, onSkip }: { readonly notice?: ReactNode; readonly onSkip?: () => void }) {
   const { data: session } = authClient.useSession();
   const [stack, setStack] = useState<Stack>();
   const [loadError, setLoadError] = useState<string>();
@@ -28,9 +33,15 @@ export function ConnectStack({ notice }: { readonly notice?: ReactNode }) {
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/connections", { cache: "no-store" });
-      const body = (await response.json()) as Stack & { error?: string };
-      if (!response.ok) throw new Error(body.error);
-      setStack(body);
+      const body = (await response.json()) as Partial<Stack> & { error?: string };
+      // 401 = guest: they use the demo shop, nothing to load.
+      if (response.status === 401) {
+        setStack({ signedIn: false, githubEnabled: body.githubEnabled, connections: { ...NO_CONNECTIONS } });
+        setLoadError(undefined);
+        return;
+      }
+      if (!response.ok || !body.connections) throw new Error(body.error);
+      setStack(body as Stack);
       setLoadError(undefined);
     } catch (error) {
       setLoadError(error instanceof Error && error.message ? error.message : "Couldn't load your stack.");
@@ -64,6 +75,11 @@ export function ConnectStack({ notice }: { readonly notice?: ReactNode }) {
             />{" "}
             to connect your own stack — or keep using the demo shop.
           </span>
+          {onSkip ? (
+            <button className="ml-2 bg-cotton px-1 text-ink underline" onClick={onSkip} type="button">
+              Use the demo shop →
+            </button>
+          ) : null}
         </p>
       ) : null}
       {loadError ? (
@@ -80,6 +96,7 @@ export function ConnectStack({ notice }: { readonly notice?: ReactNode }) {
               onChange={load}
               provider={provider}
               signedIn={stack?.signedIn ?? false}
+              unavailable={provider.id === "github" && stack?.signedIn === true && !stack.githubEnabled && !stack.connections.github}
             />
           </li>
         ))}
@@ -128,11 +145,14 @@ function ProviderCard({
   signedIn,
   loading,
   onChange,
+  unavailable = false,
 }: {
   readonly provider: (typeof PROVIDERS)[number];
   readonly connection: PublicConnection | null;
   readonly signedIn: boolean;
   readonly loading: boolean;
+  /** GitHub connect is behind GITHUB_CONNECT_ENABLED until its ownership check is verified end to end. */
+  readonly unavailable?: boolean;
   readonly onChange: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -165,16 +185,17 @@ function ProviderCard({
         {loading ? <LoaderIcon aria-label="Loading" className="size-4 animate-spin" /> : <StatusTag status={status} />}
       </div>
 
-      <p className="font-mono text-sm">{!signedIn ? provider.demo : connection ? describe(connection) : "Not connected yet."}</p>
+      <p className="font-mono text-sm">
+        {!signedIn
+          ? provider.demo
+          : connection
+            ? describe(connection)
+            : unavailable
+              ? "Coming soon. Until then Roary reads code and opens PRs only on the demo shop's repo."
+              : "Not connected yet."}
+      </p>
 
-      {provider.id === "sentry" && signedIn ? (
-        <p className="font-mono text-muted-foreground text-[11px] uppercase leading-relaxed">
-          At the desk, Roary also asks you to sign in to Sentry once (your own OAuth). The token below is for alerts
-          Roary handles on its own.
-        </p>
-      ) : null}
-
-      {signedIn ? (
+      {signedIn && !unavailable ? (
         <div className="flex flex-wrap gap-2">
           {provider.id === "github" ? (
             <a

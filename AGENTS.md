@@ -202,6 +202,46 @@ neon inspect db table-sizes                         # storage
 |---|---|
 | Records the team can query/list: incidents, launches, videos, review reports | Soft facts Roary remembers about people/the team ("this team prefers short PR descriptions") |
 
+## Workspaces, connections & encryption
+
+Full design: `docs/CONNECT.md`. The rules you must not break:
+
+- **Every turn runs in a workspace.** `resolveWorkspace(principal)` (`agent/lib/workspace.ts`): a
+  verified Neon Auth user → their own workspace (created on first touch); a GitHub webhook → the
+  workspace that connected that `installation_id`, else the demo; everyone else (guests, localDev,
+  the Sentry webhook) → the single `is_demo` workspace "Roary Demo Shop". In tools use
+  `workspaceForTurn(ctx)` (`agent/lib/workspace-context.ts`); in the web app use
+  `getUserWorkspace()` / `getCurrentWorkspace()` (`apps/web/lib/connections/workspace.ts`). Never
+  take a workspace id from the browser or the model.
+- **Records are scoped.** `incidents`, `launches`, `roary_profiles` carry `workspace_id`; read and
+  write them filtered by the turn's workspace.
+- **Credentials come from `credentialFor()` only.** Order: the row's `secret_ciphertext` → its
+  `connector_ref` (Vercel Connect) → the env token, **demo workspace only**. A signed-in workspace
+  never falls back to `SENTRY_AUTH_TOKEN` / `POSTHOG_API_KEY`.
+- **One encryption helper: `agent/lib/crypto.ts`.** Write with `sealConnectionSecret(workspaceId,
+  provider, token)`, read with `openConnectionSecret(row)`. The AAD binds a ciphertext to its row.
+  Don't add a second cipher anywhere; the web app imports this file.
+- **Never return or log secrets.** APIs return `toPublic(connection)` (`hasSecret`, no ciphertext);
+  log error *names*, not messages (pg and provider errors can echo credentials).
+- **Test against a non-production Neon branch** (`neon env pull --branch dev-…`). Scripts that write
+  refuse to run when `NEON_BRANCH=production`.
+
+### Adding a provider (e.g. Linear)
+
+1. Add it to `CONNECTION_PROVIDERS` in `agent/lib/schema.ts` **and** extend the
+   `connections_provider_check` constraint with a migration (`npm run db:generate`).
+2. Add its config type to `apps/web/lib/connections/types.ts` (`PROVIDERS`, `ConfigFor`).
+3. Write a live validator in `apps/web/lib/connections/validate.ts` (fixed hosts only, timeouts,
+   never echo the key) and a `saveX()` in `service.ts` that validates, then stores with
+   `sealConnectionSecret`. Add it to `runCheck()` so **Test** works.
+4. Accept it in `apps/web/app/api/connections/[provider]/route.ts` (zod schema) and add a card +
+   form in `apps/web/app/_components/connect-stack.tsx`.
+5. Agent side: the tool or MCP connection gets its token with
+   `credentialFor(await workspaceForTurn(ctx), findConnection(resolved, "x"), process.env.X_DEMO_TOKEN)`
+   (see `agent/connections/posthog.ts`), and `describeConnection()` in `workspace-context.ts` gets a line.
+6. Tests: a case in `scripts/connections-providers-test.ts` (live validator) and in
+   `scripts/test-workspaces.ts` (a signed-in workspace uses its own key; the demo still works).
+
 ## Workstreams
 
 | # | Workstream | Key files | Done when |

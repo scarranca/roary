@@ -1,5 +1,5 @@
 import { workspaceForTurn } from "./workspace-context";
-import { findConnection, tokenFor } from "./workspace";
+import { credentialFor, findConnection } from "./workspace";
 
 export type SentryAccess =
   | { ok: true; org: string; project: string | undefined; token: string; workspaceId: number }
@@ -15,12 +15,21 @@ export async function sentryAccess(ctx: TurnContext): Promise<SentryAccess> {
   const resolved = await workspaceForTurn(ctx);
   const connection = findConnection(resolved, "sentry");
   const config = (connection?.config ?? {}) as { org?: string; project?: string };
-  const token = tokenFor(resolved, connection, process.env.SENTRY_AUTH_TOKEN);
   if (!connection || !config.org) {
     return {
       ok: false,
       error: "no_sentry_connection",
       message: "This workspace has no Sentry connection yet. Ask the team to connect Sentry in Roary's setup.",
+    };
+  }
+  let token: string | null;
+  try {
+    token = await credentialFor(resolved, connection, process.env.SENTRY_AUTH_TOKEN);
+  } catch {
+    return {
+      ok: false,
+      error: "sentry_token_unreadable",
+      message: "This workspace's Sentry credential couldn't be read. Ask the team to reconnect Sentry in Roary's setup.",
     };
   }
   if (!token) {

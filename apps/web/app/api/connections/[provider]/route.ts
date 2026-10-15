@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { hasEncryptionKey } from "@/lib/connections/crypto";
+import { hasEncryptionKey } from "../../../../../../agent/lib/crypto";
 import { savePosthog, saveSentry } from "@/lib/connections/service";
 import { POSTHOG_HOSTS } from "@/lib/connections/validate";
-import { getCurrentWorkspace } from "@/lib/connections/workspace";
+import { getUserWorkspace } from "@/lib/connections/workspace";
 
 // Paste-a-key connects (Sentry, PostHog): validate live, then store encrypted.
 // GitHub connects through the App install flow (/api/connect/github/install) instead.
@@ -26,8 +26,8 @@ export async function POST(request: Request, context: Context) {
   if (provider !== "sentry" && provider !== "posthog") {
     return Response.json({ error: "Unknown provider." }, { status: 404 });
   }
-  const workspace = await getCurrentWorkspace();
-  if (workspace.kind === "demo") {
+  const workspace = await getUserWorkspace();
+  if (!workspace) {
     return Response.json({ error: "Sign in to connect your own stack." }, { status: 401 });
   }
   if (!hasEncryptionKey()) {

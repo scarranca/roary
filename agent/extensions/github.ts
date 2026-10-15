@@ -5,18 +5,25 @@ import { findConnection } from "../lib/workspace";
 // Mounted as an extension (the registry's `extension/github-tools` path) rather than
 // `createGithubTools` in agent/tools/, which is deprecated and not durable across
 // multi-turn workflow replay. Tools are exposed as `github__<toolName>`.
+const GITHUB_CONNECTOR = "github/roary";
+
 export default githubExtension({
-  connector: "github/roary",
+  connector: GITHUB_CONNECTOR,
   // The GitHub App is shared, so the workspace decides what a turn may touch. The demo
   // workspace keeps the app's default (the installation owning each call's repo). A signed-in
-  // workspace must have connected GitHub, and calls are pinned to its installation and repos.
+  // workspace (or a GitHub event routed to one by installation id) must have connected GitHub
+  // through this connector (`connector_ref`), and calls are pinned to its installation and repos:
+  // Connect mints an installation token for exactly that installationId.
   connect: async (ctx, call) => {
     const resolved = await workspaceForTurn(ctx);
     if (resolved.workspace.isDemo) return {};
     const connection = findConnection(resolved, "github");
     const config = (connection?.config ?? {}) as { installationId?: number | string; repos?: string[] };
-    if (!connection || !config.installationId) {
+    if (!connection || !config.installationId || connection.status !== "connected") {
       throw new Error("This workspace has no GitHub connection yet. Ask the team to connect GitHub in Roary's setup.");
+    }
+    if ((connection.connectorRef ?? GITHUB_CONNECTOR) !== GITHUB_CONNECTOR) {
+      throw new Error(`This workspace's GitHub is connected through ${connection.connectorRef}, which Roary's GitHub tools don't use.`);
     }
     const repos = config.repos ?? [];
     if (call.owner && call.repo && !repos.includes(`${call.owner}/${call.repo}`)) {

@@ -1,6 +1,6 @@
 import { testConnection } from "@/lib/connections/service";
 import { isProvider } from "@/lib/connections/types";
-import { getCurrentWorkspace } from "@/lib/connections/workspace";
+import { getUserWorkspace } from "@/lib/connections/workspace";
 
 type Context = { params: Promise<{ provider: string }> };
 
@@ -8,8 +8,8 @@ type Context = { params: Promise<{ provider: string }> };
 export async function POST(_request: Request, context: Context) {
   const { provider } = await context.params;
   if (!isProvider(provider)) return Response.json({ error: "Unknown provider." }, { status: 404 });
-  const workspace = await getCurrentWorkspace();
-  if (workspace.kind === "demo") return Response.json({ error: "Sign in to test your own stack." }, { status: 401 });
+  const workspace = await getUserWorkspace();
+  if (!workspace) return Response.json({ error: "Sign in to test your own stack." }, { status: 401 });
   try {
     const result = await testConnection(workspace.id, provider);
     if (!result.ok) return Response.json({ ok: false, error: result.message, code: result.code }, { status: 200 });

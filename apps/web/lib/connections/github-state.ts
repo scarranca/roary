@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { signPayload, verifyPayload } from "./crypto";
+import { signPayload, verifyPayload } from "../../../../agent/lib/crypto";
 import { GITHUB_APP_SLUG } from "./validate";
 
 // The GitHub App install round trip: a signed `state` names the workspace, and a

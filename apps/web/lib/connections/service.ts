@@ -1,4 +1,4 @@
-import { decryptSecret, encryptSecret, secretAad } from "./crypto";
+import { openConnectionSecret, sealConnectionSecret } from "../../../../agent/lib/crypto";
 import { getConnectionStore } from "./store";
 import { type Connection, type Provider, type PublicConnection, toPublic } from "./types";
 import { GITHUB_CONNECTOR, type Validation, validatePosthog, validateSentry, verifyGithubInstallation } from "./validate";
@@ -22,7 +22,7 @@ export async function saveSentry(workspaceId: number, input: { token: string; or
     provider: "sentry",
     status: "connected",
     config,
-    secretCiphertext: encryptSecret(input.token.trim(), secretAad(workspaceId, "sentry")),
+    secretCiphertext: sealConnectionSecret(workspaceId, "sentry", input.token.trim()),
     connectorRef: null,
   });
   return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
@@ -38,7 +38,7 @@ export async function savePosthog(workspaceId: number, input: { apiKey: string; 
     provider: "posthog",
     status: "connected",
     config,
-    secretCiphertext: encryptSecret(input.apiKey.trim(), secretAad(workspaceId, "posthog")),
+    secretCiphertext: sealConnectionSecret(workspaceId, "posthog", input.apiKey.trim()),
     connectorRef: null,
   });
   return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
@@ -103,7 +103,7 @@ async function runCheck(row: Connection): Promise<Validation> {
   if (!row.secretCiphertext) return { ok: false, code: "no_secret", message: "No credential stored. Connect again." };
   let secret: string;
   try {
-    secret = decryptSecret(row.secretCiphertext, secretAad(row.workspaceId, row.provider));
+    secret = openConnectionSecret({ ...row, secretCiphertext: row.secretCiphertext });
   } catch {
     return { ok: false, code: "undecryptable", message: "The stored credential can't be read (key rotated?). Connect again." };
   }

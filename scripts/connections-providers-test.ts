@@ -70,6 +70,20 @@ else {
   }
   const bogus = await verifyGithubInstallation("1");
   expect("GitHub: installation id that isn't myroary's is refused", !bogus.ok && bogus.code === "not_installed", bogus.ok ? "accepted!" : bogus.code);
+
+  // The ownership check's first leg: a user with no GitHub authorization yet is sent to Connect's
+  // GitHub OAuth screen (the second leg, /user/installations, needs a human to finish OAuth).
+  const { githubUserToken } = await import("../apps/web/lib/connections/github-user");
+  try {
+    const user = await githubUserToken(`roary-test-${Date.now()}`, "http://localhost:3101/api/connect/github/callback");
+    expect(
+      "GitHub: unauthorized user gets a Connect authorize URL (user subject)",
+      user.kind === "authorize" && new URL(user.url).host === "connect.vercel.com",
+      user.kind === "authorize" ? new URL(user.url).host : "got a token for a brand-new user?!",
+    );
+  } catch (error) {
+    report("FAIL", "GitHub: Connect user authorization", (error as Error).message.slice(0, 120));
+  }
 }
 
 // ---- Full flow: validate → encrypt → store → test (memory store) -----------

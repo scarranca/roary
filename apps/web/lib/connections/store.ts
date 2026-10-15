@@ -1,10 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
-import { connections } from "./schema";
 import type { ConfigFor, Connection, ConnectionStatus, Provider } from "./types";
 
-// Typed repository for the `connections` table (contract in ./types.ts). It targets
-// Postgres so it lights up as soon as santiago/connect-foundation migrates the table;
-// until then (relation missing, or CONNECTIONS_STORE=memory) it keeps rows in memory.
+// Typed repository over the real `connections` table (agent/lib/schema.ts, migration
+// drizzle/0003_workspaces.sql), the same rows the agent reads in agent/lib/workspace.ts.
+// The in-memory store exists only for unit tests and local dev without a database
+// (CONNECTIONS_STORE=memory, or no DATABASE_URL outside production).
 
 export type UpsertConnection<P extends Provider> = {
   workspaceId: number;
@@ -21,11 +21,11 @@ export interface ConnectionStore {
   get<P extends Provider>(workspaceId: number, provider: P): Promise<Connection<P> | null>;
   upsert<P extends Provider>(row: UpsertConnection<P>): Promise<Connection<P>>;
   setStatus(workspaceId: number, provider: Provider, status: ConnectionStatus): Promise<void>;
-  /** Webhook routing and claim checks: which workspace owns this GitHub installation. */
+  /** Claim checks: which workspace owns this GitHub installation. */
   findByGithubInstallation(installationId: string): Promise<Connection<"github"> | null>;
 }
 
-// ---- memory ---------------------------------------------------------------
+// ---- memory (tests / local dev only) ----------------------------------------
 
 type MemoryRows = Map<string, Connection>;
 // Survives Next dev hot reloads.
@@ -59,25 +59,24 @@ export function createMemoryStore(rows: MemoryRows = new Map()): ConnectionStore
   };
 }
 
-// ---- postgres -------------------------------------------------------------
+// ---- postgres -----------------------------------------------------------------
 
-type Row = typeof connections.$inferSelect;
+async function createPostgresStore(): Promise<ConnectionStore> {
+  // Imported lazily: the shared pool needs DATABASE_URL, which memory mode doesn't.
+  const { db, schema } = await import("../../../../agent/lib/db");
+  const { connections } = schema;
+  type Row = typeof connections.$inferSelect;
 
-function fromRow(row: Row): Connection {
-  return {
+  const fromRow = (row: Row): Connection => ({
     workspaceId: row.workspaceId,
     provider: row.provider,
-    status: row.status,
+    status: row.status as ConnectionStatus,
     config: row.config as Connection["config"],
     secretCiphertext: row.secretCiphertext,
     connectorRef: row.connectorRef,
     updatedAt: row.updatedAt.toISOString(),
-  };
-}
+  });
 
-async function createPostgresStore(): Promise<ConnectionStore> {
-  // Imported lazily: the shared pool needs DATABASE_URL, which memory mode doesn't.
-  const { db } = await import("../../../../agent/lib/db");
   return {
     kind: "postgres",
     async list(workspaceId) {
@@ -93,22 +92,22 @@ async function createPostgresStore(): Promise<ConnectionStore> {
       return row ? (fromRow(row) as Connection<typeof provider>) : null;
     },
     async upsert(input) {
-      const values = { ...input, config: input.config as unknown };
+      const config = input.config as unknown as Record<string, unknown>;
       const [row] = await db
         .insert(connections)
-        .values(values)
+        .values({ ...input, config })
         .onConflictDoUpdate({
           target: [connections.workspaceId, connections.provider],
           set: {
-            status: values.status,
-            config: values.config,
-            secretCiphertext: values.secretCiphertext,
-            connectorRef: values.connectorRef,
+            status: input.status,
+            config,
+            secretCiphertext: input.secretCiphertext,
+            connectorRef: input.connectorRef,
             updatedAt: sql`now()`,
           },
         })
         .returning();
-      return fromRow(row) as Connection<typeof input.provider>;
+      return fromRow(row!) as Connection<typeof input.provider>;
     },
     async setStatus(workspaceId, provider, status) {
       await db
@@ -127,29 +126,15 @@ async function createPostgresStore(): Promise<ConnectionStore> {
   };
 }
 
-/** Postgres "undefined_table": the foundation migration hasn't run on this database yet. */
-function isMissingTable(error: unknown): boolean {
-  for (let e: unknown = error; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
-    if ((e as { code?: string }).code === "42P01") return true;
-  }
-  return false;
-}
-
 let resolved: Promise<ConnectionStore> | undefined;
 
+export function memoryStoreSelected(): boolean {
+  if (process.env.CONNECTIONS_STORE === "memory") return true;
+  return !process.env.DATABASE_URL && process.env.NODE_ENV !== "production";
+}
+
 export function getConnectionStore(): Promise<ConnectionStore> {
-  resolved ??= (async () => {
-    if (process.env.CONNECTIONS_STORE === "memory" || !process.env.DATABASE_URL) return createMemoryStore(memoryRows);
-    const store = await createPostgresStore();
-    try {
-      await store.list(-1);
-      return store;
-    } catch (error) {
-      if (!isMissingTable(error)) throw error;
-      console.warn("connections table missing (santiago/connect-foundation not migrated); using the in-memory store");
-      return createMemoryStore(memoryRows);
-    }
-  })().catch((error) => {
+  resolved ??= (memoryStoreSelected() ? Promise.resolve(createMemoryStore(memoryRows)) : createPostgresStore()).catch((error) => {
     resolved = undefined;
     throw error;
   });

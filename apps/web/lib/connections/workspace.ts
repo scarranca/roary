@@ -1,27 +1,26 @@
-import { createHash } from "node:crypto";
 import { getSessionUserId } from "@/lib/auth/server";
 
-// STUB for santiago/connect-foundation, which owns users → workspaces. Replace the body
-// of getCurrentWorkspace() with its lookup; callers only rely on this shape.
+// The web app's view of the caller's workspace, from the same resolver the agent uses
+// (agent/lib/workspace.ts → resolveWorkspace): a signed-in Neon Auth user gets their own
+// workspace (created on first touch), a guest gets the shared demo workspace, which nobody
+// may reconfigure from the web.
 
 export type Workspace =
   | { kind: "user"; id: number; userId: string }
-  /** Guests share the demo shop's workspace, which nobody may reconfigure. */
   | { kind: "demo"; id: number };
 
-export const DEMO_WORKSPACE_ID = 0;
-
-/** Stable positive int from a user id until real workspace rows exist. */
-function stubWorkspaceId(userId: string): number {
-  return (createHash("sha256").update(userId).digest().readUInt32BE(0) & 0x7fffffff) || 1;
+/** For a signed-in caller only; guests get null without touching the database. */
+export async function getUserWorkspace(): Promise<Extract<Workspace, { kind: "user" }> | null> {
+  const userId = await getSessionUserId();
+  if (!userId) return null;
+  const { NEON_AUTH_AUTHENTICATOR, resolveWorkspace } = await import("../../../../agent/lib/workspace");
+  const { workspace } = await resolveWorkspace({ authenticator: NEON_AUTH_AUTHENTICATOR, principalType: "user", principalId: userId });
+  return { kind: "user", id: workspace.id, userId };
 }
 
 export async function getCurrentWorkspace(): Promise<Workspace> {
-  // Local testing without Neon Auth: never honored in production builds.
-  const devId = process.env.NODE_ENV !== "production" ? Number(process.env.CONNECTIONS_DEV_WORKSPACE_ID) : Number.NaN;
-  if (Number.isInteger(devId) && devId > 0) return { kind: "user", id: devId, userId: `dev-${devId}` };
-
-  const userId = await getSessionUserId();
-  if (!userId) return { kind: "demo", id: DEMO_WORKSPACE_ID };
-  return { kind: "user", id: stubWorkspaceId(userId), userId };
+  const user = await getUserWorkspace();
+  if (user) return user;
+  const { getDemoWorkspace } = await import("../../../../agent/lib/workspace");
+  return { kind: "demo", id: (await getDemoWorkspace()).id };
 }

@@ -1,124 +1,128 @@
 # Connect your stack (per-workspace GitHub, Sentry, PostHog)
 
-Lets a signed-in team point Roary at **their own** repos, Sentry project and PostHog project
-instead of the demo shop. UI: the **Stack** station in `/hire` (between Jobs and Offer) and
-`/settings/connections`. Guests see the demo shop's stack and a sign-in prompt.
+A signed-in team points Roary at **their own** Sentry project and PostHog project (GitHub is
+behind a flag, see below) instead of the demo shop. Guests keep the demo shop exactly as before.
+UI: the **Stack** station in `/hire` (guests can skip it with "Use the demo shop →") and
+`/settings/connections`. A signed-in user with nothing connected sees a "Connect your stack" card
+on `/desk` instead of an empty feed.
+
+## How a turn finds its credentials
+
+```
+browser (Neon Auth session) ──JWT──▶ eve channel: neonAuth() verifies (JWKS) → principal {neon-auth, user id}
+                                                        │
+GitHub webhook ──▶ eve github channel: principal {github-webhook, installation_id}
+Sentry webhook / anonymous / localDev ──▶ principal without a workspace of its own
+                                                        ▼
+                       resolveWorkspace(principal)  (agent/lib/workspace.ts)
+                         neon user        → their workspace (created on first touch)
+                         github-webhook   → workspace whose github connection has that installationId, else demo
+                         anything else    → the demo workspace ("Roary Demo Shop", is_demo)
+                                                        ▼
+                       credentialFor(resolved, connection, envToken)
+                         1. connection.secret_ciphertext → decrypt (agent/lib/crypto.ts, AAD = workspace:provider)
+                         2. connection.connector_ref     → Vercel Connect app token (GitHub: pinned to installationId)
+                         3. demo workspace only          → env token (SENTRY_AUTH_TOKEN / POSTHOG_API_KEY)
+```
+
+A signed-in workspace **never** falls back to the demo's env tokens.
 
 ## Code map
 
 | Piece | File |
 |---|---|
-| Contract types (`connections` row) | `apps/web/lib/connections/types.ts` |
-| Table mirror (no migration here) | `apps/web/lib/connections/schema.ts` |
-| Repository: Postgres, memory fallback | `apps/web/lib/connections/store.ts` |
-| `getCurrentWorkspace()` stub | `apps/web/lib/connections/workspace.ts` |
-| AES-256-GCM + HMAC state | `apps/web/lib/connections/crypto.ts` |
+| Tables (`workspaces`, `workspace_members`, `connections`) | `agent/lib/schema.ts`, migration `drizzle/0003_workspaces.sql` |
+| Workspace resolution + credential choice | `agent/lib/workspace.ts` (`resolveWorkspace`, `credentialFor`) |
+| Per-turn helpers, `[Workspace]` context line | `agent/lib/workspace-context.ts`, `agent/lib/sentry-access.ts` |
+| **The one encryption helper** (both sides) | `agent/lib/crypto.ts` |
+| Neon Auth JWT verification in eve | `agent/lib/neon-auth.ts`, `agent/channels/eve.ts` |
+| Agent consumers | `agent/tools/{list,get}_sentry_issue.ts`, `agent/connections/posthog.ts` (per-caller `auth`), `agent/extensions/github.ts` (per-caller `connect`) |
+| Web: caller's workspace | `apps/web/lib/connections/workspace.ts` (`getUserWorkspace`, `getCurrentWorkspace` → `resolveWorkspace`) |
+| Web: repository over `connections` | `apps/web/lib/connections/store.ts` (memory store only with `CONNECTIONS_STORE=memory` or no `DATABASE_URL` outside production) |
 | Live validators | `apps/web/lib/connections/validate.ts` |
 | Validate → encrypt → store | `apps/web/lib/connections/service.ts` |
-| GitHub install state | `apps/web/lib/connections/github-state.ts` |
-| API | `/api/connections` (GET), `/api/connections/{sentry,posthog}` (POST), `/api/connections/{provider}/test` (POST), `/api/connect/github/install`, `/api/connect/github/callback` |
+| GitHub install state / user ownership check | `apps/web/lib/connections/github-state.ts`, `apps/web/lib/connections/github-user.ts` |
+| API | `GET /api/connections` (401 for guests), `POST /api/connections/{sentry,posthog}`, `POST /api/connections/{provider}/test`, `/api/connect/github/install`, `/api/connect/github/callback` |
 | Cards | `apps/web/app/_components/connect-stack.tsx` |
+| Desk CTA | `apps/web/app/desk/_components/activity-feed.tsx` (reads `workspace` from `/api/feed`) |
 
-Secrets never leave the server: GET returns `hasSecret`, never the ciphertext. Ciphertexts are
-bound to their row (`<workspaceId>:<provider>` as GCM additional data), so a copied value fails to decrypt.
+Secrets never leave the server: GET returns `hasSecret`, never the ciphertext.
 
-## GitHub (App `myroary`, via Vercel Connect `github/roary`)
+## Encryption
+
+AES-256-GCM, key = HKDF-SHA256(`CONNECTIONS_ENCRYPTION_KEY`, info `roary:connections-secret`).
+Format `v1.<iv>.<tag>.<ciphertext>` (base64url). Additional data = `<workspaceId>:<provider>`, so a
+ciphertext copied into another workspace's row fails to decrypt. The web app writes with
+`sealConnectionSecret(workspaceId, provider, token)`; the agent reads with `openConnectionSecret(row)`.
+The same key must be set for the web app and the agent (same Vercel project, so one env var).
+Rotating the key makes stored secrets unreadable: the card's Test button then says "Connect again".
+
+## GitHub (App `myroary`, via Vercel Connect `github/roary`) — behind `GITHUB_CONNECT_ENABLED=1`
 
 1. **Install** → `/api/connect/github/install` signs `state = {workspaceId, nonce, exp}` (HMAC,
-   15 min) and sets the nonce in an httpOnly cookie, then redirects to
-   `https://github.com/apps/myroary/installations/new?state=…`.
+   15 min), sets the nonce in an httpOnly cookie, redirects to `github.com/apps/myroary/installations/new`.
 2. **Callback** `/api/connect/github/callback?installation_id&setup_action&state` checks the
-   signature, expiry, cookie nonce and that the signed-in workspace matches the state.
-   `setup_action=request` (org owner must approve) → row `pending`.
-3. **Verify** without the App private key: Vercel Connect holds it, so
-   `getTokenResponse("github/roary", { subject: { type: "app" }, installationId })` mints an
-   installation token. GitHub refuses for installations of other apps (Connect answers 422).
-   Then `GET /installation/repositories` fills `config.repos`. `secret_ciphertext` stays null;
-   tokens are minted on demand (15 min).
-4. **First claim wins**: an installation already bound to another workspace is refused.
+   signature, expiry, cookie nonce, and that the state's workspace is the signed-in user's.
+3. **Ownership proof** (the fix for "the callback trusted `installation_id` from the query string"):
+   the callback gets the person's GitHub **user** token from Vercel Connect
+   (`getToken("github/roary", {subject: {type: "user", id: <neon user id>, issuer: <neon auth origin>}})`).
+   Without one it redirects to `startAuthorization(...)` and Connect brings them back to the same
+   callback URL. The installation must appear in `GET /user/installations`, otherwise nothing is saved.
+4. **Verify + store**: an app installation token from Connect lists `config.repos`; the row stores
+   `{installationId, repos}` with `connector_ref = 'github/roary'` and no secret. First claim wins.
+5. **Agent**: the GitHub extension's per-caller `connect` resolver pins tool calls to that
+   installation and its repos for a signed-in workspace; the demo keeps the app default.
+6. **Webhooks**: `@roary` mentions / PR events carry `installation_id`; `resolveWorkspace` routes
+   them to the workspace that connected that installation. Unclaimed installs (the demo shop) → demo.
 
-**Needs an owner action:** the App's *Setup URL* must be `https://<host>/api/connect/github/callback`
-with "Redirect on update" on. That's a production App setting and wasn't changed here. Because
-Connect owns the App, check first that Connect doesn't rely on its own Setup URL.
-
-**Security gap, fix before shipping:** the callback trusts `installation_id` from the query string.
-The signed state and nonce cookie only prove who started the flow, not that this user can
-administer that installation. Installation ids are sequential, so first-claim-wins is a weak guard.
-Fix: before claiming, get a GitHub *user* token and require that the id appears in
-`GET /user/installations`. Probed: `startAuthorization("github/roary", { subject: { type: "user", id } }, { callbackUrl })`
-returns a `connect.vercel.com/authorize/…` URL. So Connect can broker that user token with no
-App setting change and no client secret on our side. Not wired yet: the end-to-end user consent
-flow wasn't run.
-
-### Webhook routing (design; implement on the foundation branch)
-
-Every App webhook carries `installation.id`. In the eve GitHub channel (`agent/channels/github.ts`),
-resolve the workspace before starting a session:
-
-```ts
-const conn = await store.findByGithubInstallation(String(payload.installation.id));
-if (!conn || conn.status !== "connected") return null;           // unknown install: ignore
-// start the session with workspaceId = conn.workspaceId, and pass installationId to the GitHub
-// extension so tools act with that installation's token, not the default one.
-```
-
-`installation` / `installation_repositories` events should update `config.repos`, and
-`installation.deleted` should set `status = 'error'`. Postgres lookup:
-`where provider = 'github' and config->>'installationId' = $1` (add an expression index).
+**Why it's off in production:** steps 3–4 can't be verified end to end without a person clicking
+through GitHub's OAuth screen, and the App's *Setup URL* must be set to
+`https://<host>/api/connect/github/callback` ("Redirect on update" on) — a production App setting
+that wasn't changed. Unit tests cover the ownership check (`scripts/connections-crypto-test.ts`) and
+the live test confirms Connect starts user authorization for `github/roary`
+(`scripts/connections-providers-test.ts`). To turn it on: set the Setup URL, set
+`GITHUB_CONNECT_ENABLED=1` on a preview, connect a real install, then enable in production.
+Not done yet: handling `installation.deleted` / `installation_repositories` events to update rows.
 
 ## Sentry
 
-- **(a) Chat-time, per user:** already wired. `agent/connections/sentry.ts` uses
-  `connect("sentry/sentry")`, a user-scoped Vercel Connect connector. When a tool needs it, Roary
-  posts a `connect.vercel.com/authorize/…` link. The principal is the **Vercel/eve user** today,
-  not the Neon Auth user. Once foundation maps a Neon user to the eve principal (for example,
-  `subject: { type: "user", id: <neon user id> }` passed by the web chat's auth), each user's
-  Sentry grant follows them. Web-side, `startAuthorization("sentry/sentry", { subject: { type: "user", id } }, { callbackUrl })`
-  can start the same grant from `/settings/connections`.
-- **(b) Autonomous:** paste an auth token + org + project. Validation calls
-  `GET https://sentry.io/api/0/projects/{org}/{project}/`. If that answers 403 (the token has no
-  `project:read`, which is true of the demo "Roary" internal integration), it falls back to
-  `GET …/{project}/issues/?limit=1`, the scope triage actually needs. Records `checkedVia`.
-  Stored encrypted. Self-hosted Sentry and non-US region hosts aren't supported yet.
-- **Public integration** (one-click instead of pasting a token) needs a Sentry *public* integration:
-  publish request and review by Sentry, a redirect URL (`/api/connect/sentry/callback`), and
-  webhook URL + client secret for verifying `installation` hooks. Then exchange the install
-  `code` for a token that refreshes every 8h.
+- Paste an auth token + org + project. Validation calls `GET /api/0/projects/{org}/{project}/`; on
+  403 (no `project:read`, true of the demo "Roary" internal integration) it falls back to
+  `GET …/issues/?limit=1`, the scope triage needs. Stored encrypted.
+- Self-hosted Sentry and non-US region hosts aren't supported yet.
+- **Sentry webhook stays demo-only**: `agent/channels/sentry-webhook.ts` verifies one shared
+  client secret (`SENTRY_WEBHOOK_SECRET`) of the demo's internal integration, so every alert it
+  receives is the demo's. Routing a team's alerts needs a Sentry *public* integration (publish
+  request + Sentry review, redirect URL, webhook URL, client secret); its `installation.uuid` would
+  then map to a workspace the same way GitHub's `installation_id` does. A team's own Sentry still
+  works for chat-time triage today.
 
 ## PostHog
 
-Personal API key + project id + US/EU cloud. Validation: `GET {host}/api/projects/{id}/` with
-`Bearer`. Only `us.posthog.com` / `eu.posthog.com` are accepted (no arbitrary hosts, so no SSRF).
-The wrong region answers 401, and the UI says so. Stored encrypted.
+Personal API key (scope preset "MCP Server") + project id + US/EU cloud. Validation:
+`GET {host}/api/projects/{id}/`. Only `us.posthog.com` / `eu.posthog.com` are accepted (no SSRF).
+The wrong region answers 401, and the UI says so. Stored encrypted; the PostHog MCP connection
+picks it per turn.
 
 ## Env
 
 | Name | Where | Notes |
 |---|---|---|
-| `CONNECTIONS_ENCRYPTION_KEY` | web | 32 bytes, base64 or hex (`openssl rand -base64 32`). Without it, connect routes answer 503 and the build still passes. |
-| `VERCEL_OIDC_TOKEN` | web (automatic on Vercel) | Connect auth for `github/roary` tokens; local: `vercel env pull`. |
-| `DATABASE_URL` | web | Postgres store once the `connections` table exists. |
-| `CONNECTIONS_STORE=memory` | optional | Forces the in-memory store (tests, local). |
-| `CONNECTIONS_DEV_WORKSPACE_ID` | local only | Acts as a signed-in workspace when Neon Auth env is missing; ignored when `NODE_ENV=production`. |
+| `CONNECTIONS_ENCRYPTION_KEY` | web + agent | 32 bytes, base64 or hex (`openssl rand -base64 32`). Without it, connect routes answer 503. |
+| `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` | web + agent | Sign-in (web) and JWT verification (eve). |
+| `DATABASE_URL` | web + agent | The `connections` table. |
+| `VERCEL_OIDC_TOKEN` | automatic on Vercel | Connect tokens for `github/roary`; local: `vercel env pull`. |
+| `GITHUB_CONNECT_ENABLED=1` | optional | Shows the GitHub connect button and enables the install/callback routes. |
+| `CONNECTIONS_STORE=memory` | tests only | In-memory store. |
 | `GITHUB_CONNECTOR`, `GITHUB_APP_SLUG` | optional | Default `github/roary`, `myroary`. |
-
-## Plugging into santiago/connect-foundation
-
-1. Delete `lib/connections/schema.ts` and import the foundation's `connections` table in `store.ts`
-   (column names match the contract).
-2. Replace the body of `getCurrentWorkspace()` with the real lookup (signed-in → their workspace;
-   guest → demo). Callers use only `{ kind, id }`.
-3. Nothing else changes: the store detects the table (it falls back to memory only on `42P01`).
-4. Implement webhook routing (above) and make agent tools read the workspace's connection
-   (decrypt with `decryptSecret(row.secretCiphertext, secretAad(workspaceId, provider))`).
 
 ## Tests
 
 ```bash
-npx tsx scripts/connections-crypto-test.ts                                    # no network
-npx tsx --env-file=.env.local scripts/connections-providers-test.ts           # Sentry, PostHog, GitHub via Connect
-npx next dev apps/web -p 3101                                                 # then:
-npx tsx --env-file=.env.local scripts/connections-ui-test.ts                  # guest
-# restart with CONNECTIONS_DEV_WORKSPACE_ID=42, then:
-MODE=member GITHUB_TEST_INSTALLATION_ID=<id> npx tsx --env-file=.env.local scripts/connections-ui-test.ts
+npx tsx scripts/connections-crypto-test.ts                               # no network: crypto, web→agent decrypt, GitHub ownership check
+npx tsx --env-file=.env.local scripts/connections-providers-test.ts      # live Sentry, PostHog, GitHub via Connect (memory store)
+# On a NON-production Neon branch (env with NEON_BRANCH != production, NEON_AUTH_*):
+npx eve dev --no-ui & npx next dev apps/web -p 3101 &
+npx tsx --env-file=<that env> scripts/test-workspaces.ts                # a–d, d = full web → agent round trip
+npx tsx --env-file=<that env> scripts/connections-ui-test.ts            # guest; MODE=member for a signed-in user
 ```

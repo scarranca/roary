@@ -1,4 +1,4 @@
-// Unit checks for apps/web/lib/connections/crypto.ts and the GitHub install state.
+// Unit checks for agent/lib/crypto.ts (the shared helper) and the GitHub install state.
 // Run: npx tsx scripts/connections-crypto-test.ts   (no network, no secrets needed)
 import { randomBytes } from "node:crypto";
 
@@ -18,7 +18,7 @@ const throws = (fn: () => unknown) => {
 
 const saved = process.env.CONNECTIONS_ENCRYPTION_KEY;
 delete process.env.CONNECTIONS_ENCRYPTION_KEY;
-const crypto = await import("../apps/web/lib/connections/crypto");
+const crypto = await import("../agent/lib/crypto");
 const { checkState, startInstall } = await import("../apps/web/lib/connections/github-state");
 
 check("import works without a key; hasEncryptionKey() is false", crypto.hasEncryptionKey() === false);
@@ -72,6 +72,67 @@ check("expired state is refused", (() => {
   const r = checkState(expired, "n");
   return !r.ok && r.reason === "expired";
 })());
+
+// ---- One scheme across the boundary: the web app seals, the agent opens ------------------
+// The web app's service stores sealConnectionSecret(workspaceId, provider, token); the agent's
+// credentialFor() (agent/lib/workspace.ts) must turn that row back into the token, and only for
+// that row. No database needed: credentialFor works on the resolved rows.
+process.env.CONNECTIONS_STORE = "memory";
+const service = await import("../apps/web/lib/connections/service");
+const { getConnectionStore } = await import("../apps/web/lib/connections/store");
+const { credentialFor } = await import("../agent/lib/workspace");
+const memory = await getConnectionStore();
+const token = `sntrys_${randomBytes(12).toString("hex")}`;
+await memory.upsert({
+  workspaceId: 77,
+  provider: "sentry",
+  status: "connected",
+  config: { org: "acme", project: "web" },
+  secretCiphertext: crypto.sealConnectionSecret(77, "sentry", token),
+  connectorRef: null,
+});
+const webRow = (await memory.get(77, "sentry"))!;
+const asAgentRow = (workspaceId: number, isDemo: boolean) => {
+  const now = new Date();
+  const connection = { ...webRow, id: 1, workspaceId, createdAt: now, updatedAt: now, config: webRow.config as Record<string, unknown> };
+  return { resolved: { workspace: { id: workspaceId, name: "w", ownerUserId: "u", isDemo, createdAt: now }, connections: [connection] }, connection };
+};
+const own = asAgentRow(77, false);
+check("web-sealed secret decrypts in the agent (credentialFor)", (await credentialFor(own.resolved, own.connection, "env-demo-token")) === token);
+const moved = asAgentRow(78, false);
+check("the same ciphertext copied to another workspace's row fails", await credentialFor(moved.resolved, moved.connection, undefined).then(() => false, () => true));
+const empty = { ...asAgentRow(79, false), connection: { ...own.connection, workspaceId: 79, secretCiphertext: null } };
+check("a user workspace never falls back to the env demo token", (await credentialFor(empty.resolved, empty.connection, "env-demo-token")) === null);
+const demo = { ...asAgentRow(1, true), connection: { ...own.connection, workspaceId: 1, secretCiphertext: null } };
+check("the demo workspace uses the env token", (await credentialFor(demo.resolved, demo.connection, "env-demo-token")) === "env-demo-token");
+check("service module loads against the shared helper", typeof service.saveSentry === "function");
+
+// ---- GitHub: the signed-in user must be able to reach the installation --------------------
+const { githubConnectEnabled, userCanAccessInstallation } = await import("../apps/web/lib/connections/github-user");
+const savedFlag = process.env.GITHUB_CONNECT_ENABLED;
+delete process.env.GITHUB_CONNECT_ENABLED;
+check("GitHub connect is off unless GITHUB_CONNECT_ENABLED=1", githubConnectEnabled() === false);
+process.env.GITHUB_CONNECT_ENABLED = "1";
+check("…and on with GITHUB_CONNECT_ENABLED=1", githubConnectEnabled() === true);
+if (savedFlag === undefined) delete process.env.GITHUB_CONNECT_ENABLED;
+else process.env.GITHUB_CONNECT_ENABLED = savedFlag;
+const fakeGithub = (pages: number[][], status = 200): typeof fetch =>
+  (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname !== "/user/installations") throw new Error(`unexpected ${url.pathname}`);
+    if (!String((init?.headers as Record<string, string>)?.Authorization).startsWith("Bearer ")) throw new Error("no bearer");
+    const ids = pages[Number(url.searchParams.get("page")) - 1] ?? [];
+    return new Response(JSON.stringify({ total_count: pages.flat().length, installations: ids.map((id) => ({ id })) }), { status });
+  }) as typeof fetch;
+check("installation the user can access is accepted", (await userCanAccessInstallation("ghu_x", "171490641", fakeGithub([[5, 171490641]]))).ok);
+const page2 = Array.from({ length: 100 }, (_, i) => i + 1);
+check("…found on a later page too", (await userCanAccessInstallation("ghu_x", "4242", fakeGithub([page2, [4242]]))).ok);
+const foreign = await userCanAccessInstallation("ghu_x", "999", fakeGithub([[5, 171490641]]));
+check("someone else's installation id (typed into the URL) is refused", !foreign.ok && foreign.code === "not_your_installation");
+const expiredUser = await userCanAccessInstallation("ghu_x", "5", fakeGithub([[5]], 401));
+check("a rejected user token is refused", !expiredUser.ok && expiredUser.code === "user_token_invalid");
+const notAnId = await userCanAccessInstallation("ghu_x", "1 OR 1=1", fakeGithub([[1]]));
+check("a non-numeric installation id is refused before any request", !notAnId.ok && notAnId.code === "bad_input");
 
 if (saved === undefined) delete process.env.CONNECTIONS_ENCRYPTION_KEY;
 else process.env.CONNECTIONS_ENCRYPTION_KEY = saved;
