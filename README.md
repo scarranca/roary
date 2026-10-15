@@ -65,6 +65,28 @@ Always: **friendly and mindful.** Blameless, separates *what I saw* from *what I
 
 **Stack:** Vercel (hosting) · eve · AI Gateway · Vercel Connect (GitHub App + Sentry OAuth; PostHog via API key) · Vercel Sandbox · Vercel Workflows · Vercel Cron (eve schedules) · Vercel Blob (videos) · Neon Postgres + Drizzle (state) · HyperFrames (HeyGen) · TypeScript · Node 24.
 
+## Connect your stack
+
+Anyone can try Roary on the **demo shop** without signing in. A team that signs in gets its own
+**workspace** and points Roary at its own tools:
+
+1. **Sign in** (top-right) at [roary-rho.vercel.app](https://roary-rho.vercel.app). Your workspace is created on first use.
+2. Open **`/settings/connections`** (or the **Stack** station while hiring in `/hire`).
+3. **Sentry**: paste an auth token (internal integration or org token with *Project: Read* and
+   *Issue & Event: Read*) plus your org and project slugs. Roary checks it live before saving.
+4. **PostHog**: paste a personal API key (scope preset "MCP Server"), your project id and US/EU cloud.
+5. Go to **`/desk`** and ask Roary what broke. It reads *your* Sentry and *your* PostHog. It never
+   uses the demo shop's data for a signed-in workspace.
+
+Keys are validated live, stored encrypted (AES-256-GCM, bound to your workspace), and never sent
+back to the browser. The **Test** button re-checks a stored key server side.
+
+**GitHub** connect (install the `myroary` App on your repos) is built but **off by default**
+(`GITHUB_CONNECT_ENABLED`): before saving an installation, the app proves you can access it through
+a GitHub user token from Vercel Connect, and that round trip still needs end-to-end verification
+plus an App setting change. Until then, Roary reads code and opens PRs only on the demo shop's repo.
+Sentry **alert webhooks** also stay demo-only. Details: [`docs/CONNECT.md`](./docs/CONNECT.md).
+
 ## Project layout
 
 ✅ = merged · 🚧 = in progress (open PR) · 📝 = planned
@@ -171,7 +193,12 @@ vercel deploy            # preview: use this to test webhooks / @mentions
 | `VERCEL_OIDC_TOKEN` | AI Gateway + Vercel Connect | `vercel env pull` |
 | `DATABASE_URL` | App queries (pooled Neon connection) | `neon env pull` |
 | `DATABASE_URL_UNPOOLED` | Migrations (direct connection) | `neon env pull` |
-| `POSTHOG_API_KEY` | PostHog MCP (app-level personal API key) | PostHog → Settings → Personal API keys |
+| `POSTHOG_API_KEY` | PostHog MCP for the **demo workspace only** (app-level personal API key) | PostHog → Settings → Personal API keys |
+| `SENTRY_AUTH_TOKEN` | Sentry API for the **demo workspace only** (signed-in workspaces use their own encrypted token) | Sentry → internal integration token |
+| `NEON_AUTH_BASE_URL` | Sign-in, and verifying Neon Auth JWTs in the eve channel (JWKS at `<base>/.well-known/jwks.json`) | `neon env pull` |
+| `NEON_AUTH_COOKIE_SECRET` | Signing the web app's Neon Auth session cookie | Generate once per environment |
+| `CONNECTIONS_ENCRYPTION_KEY` | AES-256-GCM key for `connections.secret_ciphertext`, shared by the web app and the agent (32 random bytes, base64: `openssl rand -base64 32`) | Generate once per environment; rotating it invalidates stored keys |
+| `GITHUB_CONNECT_ENABLED` | *Optional.* `1` turns on the GitHub App connect flow (off in production for now) | Vercel env |
 | `BLOB_READ_WRITE_TOKEN` | Uploading rendered launch videos | Added when you connect a Vercel Blob store |
 | `HEYGEN_API_KEY` | *Optional.* HyperFrames cloud render (local render needs no key) | HeyGen dashboard |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | `eve remote` against protected deployments | Vercel project settings |

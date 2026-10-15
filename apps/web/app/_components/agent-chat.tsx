@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { AgentMessage } from "./agent-message";
 import { TryItCard } from "./try-it-card";
 import { WEB_CHAT_AGENT } from "@/app/eve-agent";
+import { eveAuthHeaders } from "@/lib/auth/eve-headers";
 import { useHiredRoary } from "@/lib/hired-roary-store";
 import { hireContext } from "@/lib/roary-character";
 
@@ -52,6 +53,8 @@ export function AgentChat({ sessionId }: { readonly sessionId?: string }) {
   const agent = useEveAgent({
     prepareSend: (input) => (hired ? { ...input, clientContext: hireContext(hired) } : input),
     agent: WEB_CHAT_AGENT,
+    // Signed in: the turn runs in your own workspace. Guest: the demo workspace.
+    headers: eveAuthHeaders,
     prewarm: hasInputText,
     initialSession:
       sessionId === undefined

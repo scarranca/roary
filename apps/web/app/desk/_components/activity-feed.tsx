@@ -27,7 +27,9 @@ type Launch = {
   createdAt: string;
 };
 
-type Feed = { incidents: Incident[]; launches: Launch[] };
+type FeedWorkspace = { signedIn: boolean; isDemo: boolean; connected: string[] };
+
+type Feed = { incidents: Incident[]; launches: Launch[]; workspace?: FeedWorkspace };
 
 type Row = {
   key: string;
@@ -90,6 +92,7 @@ function timeAgo(at: string, now: number) {
 
 function useFeed() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [workspace, setWorkspace] = useState<FeedWorkspace>();
   const [failed, setFailed] = useState(false);
   const [flashing, setFlashing] = useState<ReadonlySet<string>>(new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -102,12 +105,14 @@ function useFeed() {
 
     async function poll() {
       try {
-        // No cookies: the feed is public, and a stale skew cookie would route this
-        // request to an old deployment without /api/feed (see next.config.ts).
-        const response = await fetch("/api/feed", { cache: "no-store", credentials: "omit" });
+        // Same-origin cookies: a signed-in person sees their own workspace's feed. A stale
+        // `__vdpl` skew cookie is expired by next.config.ts headers on any response.
+        const response = await fetch("/api/feed", { cache: "no-store", credentials: "same-origin" });
         if (!response.ok) throw new Error(`feed ${response.status}`);
-        const next = toRows((await response.json()) as Feed);
+        const feed = (await response.json()) as Feed;
+        const next = toRows(feed);
         if (cancelled) return;
+        setWorkspace(feed.workspace);
 
         // Flash rows that are new or changed status since the last poll (not on first load).
         const previous = seen.current;
@@ -151,11 +156,12 @@ function useFeed() {
     };
   }, []);
 
-  return { rows, failed, flashing, now };
+  return { rows, workspace, failed, flashing, now };
 }
 
 export function ActivityFeed() {
-  const { rows, failed, flashing, now } = useFeed();
+  const { rows, workspace, failed, flashing, now } = useFeed();
+  const needsStack = workspace?.signedIn === true && workspace.connected.length === 0;
 
   return (
     <div aria-live="polite" className="flex flex-col gap-3">
@@ -163,7 +169,26 @@ export function ActivityFeed() {
         <p className="font-mono text-muted-foreground text-xs uppercase">Opening the log…</p>
       ) : null}
 
-      {rows !== null && rows.length === 0 ? (
+      {needsStack && rows !== null && rows.length === 0 ? (
+        <div className="hazard-soft flex flex-col gap-3 rounded-[3px] border-2 border-ink p-6">
+          <p className="w-fit rounded-[3px] border-2 border-ink bg-label px-2 py-0.5 font-mono text-xs uppercase">
+            Nothing connected
+          </p>
+          <h3 className="type-display text-3xl">Connect your stack</h3>
+          <p className="font-mono text-sm uppercase">
+            This is your own workspace. Connect Sentry and PostHog so Roary can watch your errors and count who&apos;s
+            affected. Until then it won&apos;t touch the demo shop&apos;s data for you.
+          </p>
+          <a
+            className="plate inline-flex w-fit items-center gap-2 bg-safety px-6 py-2.5 font-mono text-ink text-xs uppercase"
+            href="/settings/connections"
+          >
+            Connect your stack →
+          </a>
+        </div>
+      ) : null}
+
+      {!needsStack && rows !== null && rows.length === 0 ? (
         <div className="flex flex-col gap-2 rounded-[3px] border-2 border-ink border-dashed p-6">
           <p className="w-fit rounded-[3px] border-2 border-ink bg-label px-2 py-0.5 font-mono text-xs uppercase">
             Log empty

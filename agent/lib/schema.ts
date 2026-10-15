@@ -1,4 +1,73 @@
-import { integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+// A team's Roary setup: who belongs to it and which stack it is connected to. Guests (and
+// webhook-started runs) use the single `is_demo` workspace, "Roary Demo Shop".
+export const workspaces = pgTable(
+  "workspaces",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    // Neon Auth user id of the creator; null for the demo workspace.
+    ownerUserId: text("owner_user_id"),
+    isDemo: boolean("is_demo").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // At most one demo workspace.
+  (t) => [uniqueIndex("workspaces_single_demo_idx").on(t.isDemo).where(sql`${t.isDemo}`)],
+);
+
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    userId: text("user_id").notNull(),
+    role: text("role").notNull().default("owner"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("workspace_members_workspace_user_unique").on(t.workspaceId, t.userId)],
+);
+
+export const CONNECTION_PROVIDERS = ["github", "sentry", "posthog"] as const;
+export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number];
+
+// One row per (workspace, provider). `config` is non-secret routing (github: {installationId,
+// repos[]}; sentry: {org, project}; posthog: {projectId, host}). Tokens live encrypted in
+// `secretCiphertext` (AES-GCM, agent/lib/crypto.ts) or behind a Vercel Connect connector
+// in `connectorRef`, never in `config`.
+export const connections = pgTable(
+  "connections",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    provider: text("provider", { enum: CONNECTION_PROVIDERS }).notNull(),
+    status: text("status").notNull().default("pending"),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    secretCiphertext: text("secret_ciphertext"),
+    connectorRef: text("connector_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("connections_workspace_provider_unique").on(t.workspaceId, t.provider),
+    check("connections_provider_check", sql`${t.provider} in ('github', 'sentry', 'posthog')`),
+  ],
+);
 
 // Errors Roary has triaged: one row per Sentry issue.
 export const incidents = pgTable(
@@ -14,6 +83,7 @@ export const incidents = pgTable(
     diagnosis: text("diagnosis"),
     suspectCommit: text("suspect_commit"),
     prUrl: text("pr_url"),
+    workspaceId: integer("workspace_id").references(() => workspaces.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -29,6 +99,7 @@ export const launches = pgTable("launches", {
   deploymentUrl: text("deployment_url"),
   videoUrl: text("video_url"),
   healthSummary: text("health_summary"),
+  workspaceId: integer("workspace_id").references(() => workspaces.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -47,5 +118,6 @@ export const roaryProfiles = pgTable("roary_profiles", {
   avatarUrl: text("avatar_url"),
   // Neon Auth user id of whoever signed the offer letter; null for guest hires.
   userId: text("user_id"),
+  workspaceId: integer("workspace_id").references(() => workspaces.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

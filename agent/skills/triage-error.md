@@ -6,15 +6,17 @@ description: Use when asked to triage, investigate or diagnose a Sentry error or
 
 Goal: in under 2 minutes, go from a Sentry issue to a posted incident report with the root cause, the number of users hit, the suspect commit and an explicit confidence. Work fast: fetch each thing once, do at most one widened search per step, and if a tool fails twice, say what failed and move on with what you have.
 
-Everything below uses Roary's app-level credentials (Sentry token, PostHog key, GitHub App), so it works in the public chat with nobody signed in. Never ask the person to sign in or connect an account for this flow.
+## Which stack: the workspace
 
-## Defaults for this team
+Each turn starts with a `[Workspace]` line that says whose workspace this is and what it has connected (Sentry org/project, PostHog project, GitHub repos). Use exactly those. The Sentry tools and PostHog/GitHub credentials already follow the workspace, so you never pick an org or token yourself.
 
-- Sentry: org `roary`, project `javascript-nextjs-k4`.
-- App repo: `scarranca/roary-demo-shop` (default branch `main`, deployed to production on Vercel from `main`).
-- PostHog: project `665339` (US). Checkout events: `checkout_clicked`, `checkout_completed`, `checkout_failed` (props `status`, `item_count`), plus `add_to_cart`.
+- **Demo workspace** (guests, Sentry alerts): it works in the public chat with nobody signed in, so never ask the person to sign in or connect an account. Its stack:
+  - Sentry: org `roary`, project `javascript-nextjs-k4`.
+  - App repo: `scarranca/roary-demo-shop` (default branch `main`, deployed to production on Vercel from `main`).
+  - PostHog: project `665339` (US). Checkout events: `checkout_clicked`, `checkout_completed`, `checkout_failed` (props `status`, `item_count`), plus `add_to_cart`.
+- **A signed-in team's own workspace:** use its connected Sentry project, PostHog project and repo. If something this flow needs isn't connected (or a tool returns `no_sentry_connection`), stop and say which connection is missing and that they can add it in Roary's setup. Never fall back to the demo shop's Sentry, PostHog or repo for them.
 
-If the issue clearly belongs to another project or repo, use that instead and say so.
+The `<repo>` below means the workspace's connected repo.
 
 ## 1. Check for duplicate work
 
@@ -26,7 +28,7 @@ Call `list_incidents` (limit 20) and look for this issue by its Sentry short id 
 
 ## 2. Read the error in Sentry
 
-If you only have a symptom ("checkout is broken") and no issue id, call `list_sentry_issues` once (its defaults are org `roary`, project `javascript-nextjs-k4`) and pick the issue that matches the flow. For checkout that is `JAVASCRIPT-NEXTJS-K4-1` (`TypeError: Cannot read properties of undefined (reading 'lineTotal')` on `POST /api/checkout`).
+If you only have a symptom ("checkout is broken") and no issue id, call `list_sentry_issues` once (it searches the workspace's connected Sentry project) and pick the issue that matches the flow. In the demo workspace, for checkout that is `JAVASCRIPT-NEXTJS-K4-1` (`TypeError: Cannot read properties of undefined (reading 'lineTotal')` on `POST /api/checkout`).
 
 Call `get_sentry_issue` with the issue id (numeric id or short id). It returns the title, culprit, first/last seen, event and user counts, the permalink and the top in-app stack frames with source context.
 
@@ -39,7 +41,7 @@ Stop here, and **don't post anything on GitHub**, if:
 
 ## 3. Measure user impact in PostHog
 
-Use `posthog__exec` against project 665339 to count distinct users hit since the error started. Prefer one HogQL query, for example:
+Use `posthog__exec` against the workspace's PostHog project (665339 in the demo workspace) to count distinct users hit since the error started. Prefer one HogQL query, for example:
 
 ```sql
 SELECT
@@ -55,7 +57,7 @@ Pick the events that match the failing flow (checkout errors → `checkout_faile
 
 ## 4. Find the suspect commit on GitHub
 
-Repo `scarranca/roary-demo-shop`:
+Repo `<repo>`:
 
 1. Map the stack frame to a repo path (strip prefixes like `webpack-internal:///`, `app:///`, `./`, `.next/server/`; e.g. `lib/checkout.ts`).
 2. `github__listCommits` with `path` set to that file (and `until` = firstSeen if helpful). The suspect is the most recent commit to that file **before** `firstSeen`.
@@ -79,13 +81,13 @@ Call `save_incident` with `sentryIssueId` set to the Sentry **short id** (e.g. `
 
 ## 7. Post the incident report on GitHub
 
-1. `github__searchIssues` in `scarranca/roary-demo-shop` for the Sentry short id (or numeric id). If an open issue exists, `github__addIssueComment` with the report.
+1. `github__searchIssues` in `<repo>` for the Sentry short id (or numeric id). If an open issue exists, `github__addIssueComment` with the report.
 2. Otherwise `github__createIssue` titled `[Roary] <error title> (<SHORT-ID>)` with the report as the body.
 
 Use the **Incident report** template from your instructions exactly. Fill it with:
 
 - **Impact:** users affected (and of how many who tried), since `firstSeen`, which flow.
-- **What I saw:** the error with the Sentry permalink, the top frame (`file:line`), the suspect commit with its link `https://github.com/scarranca/roary-demo-shop/commit/<sha>` and time, the key numbers.
+- **What I saw:** the error with the Sentry permalink, the top frame (`file:line`), the suspect commit with its link `https://github.com/<repo>/commit/<sha>` and time, the key numbers.
 - **What I think:** the mechanism and `Confidence: <high|medium|low> because <reason>`.
 - **Suggested next step:** the concrete fix (a short code suggestion is great), and offer to open a fix PR. Needs a human for: reviewing/merging the fix, or reverting/rolling back the deploy if they prefer.
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db, schema } from "../../../../../agent/lib/db";
+import { NEON_AUTH_AUTHENTICATOR, resolveWorkspace } from "../../../../../agent/lib/workspace";
 import { getSessionUserId } from "@/lib/auth/server";
 import { characterSchema } from "@/lib/roary-character";
 
@@ -32,9 +33,12 @@ export async function POST(request: Request) {
   // A signed-in hire belongs to the session's user; the body never carries an id.
   const userId = await getSessionUserId();
   try {
+    const { workspace } = await resolveWorkspace(
+      userId ? { authenticator: NEON_AUTH_AUTHENTICATOR, principalType: "user", principalId: userId } : null,
+    );
     const [row] = await db
       .insert(schema.roaryProfiles)
-      .values({ name, species: look.character.species, look, personality, jobs, autonomy, userId })
+      .values({ name, species: look.character.species, look, personality, jobs, autonomy, userId, workspaceId: workspace.id })
       .returning({ id: schema.roaryProfiles.id });
     return Response.json({ id: row.id }, { status: 201 });
   } catch (error) {

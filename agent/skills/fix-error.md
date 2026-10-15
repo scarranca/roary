@@ -10,8 +10,8 @@ Work only through the `github__*` tools. Do **not** clone, and do not run `git`,
 
 ## Defaults for this team
 
-- Repo `scarranca/roary-demo-shop`, base branch `main`. Sentry org `roary`, project `javascript-nextjs-k4`.
-- If a short request like "open a fix PR" comes with no other context, it's about the latest diagnosed incident (usually `JAVASCRIPT-NEXTJS-K4-1`, the single-item checkout crash in `lib/checkout.ts`).
+- Use the repo from the turn's `[Workspace]` line. In the demo workspace that's `scarranca/roary-demo-shop`, base branch `main` (Sentry org `roary`, project `javascript-nextjs-k4`). If a signed-in workspace has no GitHub connection, say so and that they can connect GitHub in Roary's setup; never open a PR on the demo repo for them.
+- If a short request like "open a fix PR" comes with no other context, it's about the latest diagnosed incident in this workspace (in the demo, usually `JAVASCRIPT-NEXTJS-K4-1`, the single-item checkout crash in `lib/checkout.ts`).
 - Before creating a branch, `github__listPullRequests` (state `open`) once: if an open `roary/fix-*` PR already fixes this incident, don't open a duplicate. Report that PR's link, its one-line fix, and that it's waiting for a human to review and merge.
 
 ## 1. Gather the incident

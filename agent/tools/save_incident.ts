@@ -1,7 +1,8 @@
 import { defineTool } from "eve/tools";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema, toJson } from "../lib/db";
+import { workspaceForTurn } from "../lib/workspace-context";
 
 export default defineTool({
   description:
@@ -17,16 +18,20 @@ export default defineTool({
     suspectCommit: z.string().optional().describe("SHA of the commit that likely introduced the error"),
     prUrl: z.string().url().optional().describe("URL of the fix PR, if one was opened"),
   }),
-  async execute(input) {
+  async execute(input, ctx) {
+    const { workspace } = await workspaceForTurn(ctx);
     const { sentryIssueId, ...fields } = input;
     const [row] = await db
       .insert(schema.incidents)
-      .values(input)
+      .values({ ...input, workspaceId: workspace.id })
       .onConflictDoUpdate({
         target: schema.incidents.sentryIssueId,
         set: { ...fields, updatedAt: sql`now()` },
+        // sentry_issue_id is still globally unique: never overwrite another workspace's row.
+        setWhere: eq(schema.incidents.workspaceId, workspace.id),
       })
       .returning();
+    if (!row) return { error: "incident_belongs_to_another_workspace", sentryIssueId };
     return toJson(row);
   },
 });

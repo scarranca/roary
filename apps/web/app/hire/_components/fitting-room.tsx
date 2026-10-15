@@ -16,6 +16,7 @@ import {
   type RoaryLook,
 } from "@/lib/roary-character";
 import { cn } from "@/lib/utils";
+import { ConnectStack } from "../../_components/connect-stack";
 import { energyFrom, JOB_LIST, JobsStation, OfferStation, PersonalityStation, sampleMessage, voiceLabel } from "./hire-stations";
 import type { FigureCue, Gear } from "./roary-figure";
 import { FitStation, PickStation, type PictureStudy } from "./stations";
@@ -35,8 +36,12 @@ const STATIONS = [
   { short: "Fit & swag", tiny: "Fit", title: "Fit & swag" },
   { short: "Personality", tiny: "Voice", title: "Personality" },
   { short: "Jobs", tiny: "Jobs", title: "Job description" },
+  { short: "Stack", tiny: "Stack", title: "Connect your stack" },
   { short: "Offer", tiny: "Offer", title: "Offer letter" },
 ] as const;
+
+// Station indices by name, so inserting a station can't silently shift the others.
+const AT = { pick: 0, fit: 1, voice: 2, jobs: 3, stack: 4, offer: 5 } as const;
 
 const OUTFIT_LABEL = { crew: "Crew jacket", hoodie: "Hoodie", tee: "Tee" } as const;
 
@@ -96,7 +101,7 @@ export function FittingRoom() {
   const goTo = (index: number) => {
     setStation(index);
     // Each station has its own pose: gear shows up at Jobs, a pop greets every arrival.
-    if (index === 3) setGear((g) => g ?? JOB_LIST.find((job) => jobs[job.key])?.gear);
+    if (index === AT.jobs) setGear((g) => g ?? JOB_LIST.find((job) => jobs[job.key])?.gear);
     setCue({ kind: "pop", at: Date.now() });
     showStage();
   };
@@ -135,7 +140,7 @@ export function FittingRoom() {
           <RoaryStage
             cue={cue}
             energy={energyFrom(personality)}
-            gear={station >= 3 ? gear : undefined}
+            gear={station >= AT.jobs ? gear : undefined}
             look={look}
             molding={study?.status === "working"}
             reducedMotion={reducedMotion}
@@ -149,7 +154,7 @@ export function FittingRoom() {
           <span className="font-mono text-xs uppercase opacity-85">{look.character.species} · edition 1 of 1</span>
         </div>
 
-        {station >= 2 && !signedAt ? (
+        {station >= AT.voice && !signedAt ? (
           <p
             aria-live="polite"
             className="pointer-events-none absolute inset-x-3 bottom-10 rounded-[3px] border-2 border-ink bg-cotton p-2.5 text-ink text-xs leading-snug shadow-[0_10px_24px_-12px_rgb(0_0_0/0.7)] sm:text-sm lg:inset-x-auto lg:top-24 lg:right-4 lg:bottom-auto lg:max-w-[22rem] lg:p-3"
@@ -159,7 +164,7 @@ export function FittingRoom() {
           </p>
         ) : null}
 
-        {study && station === 0 ? <PictureStudyOverlay key={study.at} study={study} /> : null}
+        {study && station === AT.pick ? <PictureStudyOverlay key={study.at} study={study} /> : null}
 
         {signedAt ? <SigningMoment key={signedAt} name={displayName} species={look.character.species} /> : null}
 
@@ -203,7 +208,7 @@ export function FittingRoom() {
           <h1 className="quoted type-display text-5xl sm:text-6xl" id="station-title">
             {current.title}
           </h1>
-          {station === 0 ? (
+          {station === AT.pick ? (
             <PickStation
               look={look}
               name={name}
@@ -220,9 +225,9 @@ export function FittingRoom() {
               presetId={presetId}
             />
           ) : null}
-          {station === 1 ? <FitStation look={look} onChange={setLook} /> : null}
-          {station === 2 ? <PersonalityStation onChange={setPersonality} personality={personality} /> : null}
-          {station === 3 ? (
+          {station === AT.fit ? <FitStation look={look} onChange={setLook} /> : null}
+          {station === AT.voice ? <PersonalityStation onChange={setPersonality} personality={personality} /> : null}
+          {station === AT.jobs ? (
             <JobsStation
               autonomy={autonomy}
               jobs={jobs}
@@ -233,7 +238,8 @@ export function FittingRoom() {
               }}
             />
           ) : null}
-          {station === 4 ? (
+          {station === AT.stack ? <ConnectStack onSkip={() => goTo(AT.offer)} /> : null}
+          {station === AT.offer ? (
             <OfferStation logo={look.logo} logoPatch={look.logoPatch} name={displayName} onSign={sign} signed={signedAt !== undefined} summary={summary} />
           ) : null}
         </div>
@@ -241,7 +247,7 @@ export function FittingRoom() {
         <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-ink border-t-2 bg-background p-4">
           <button
             className="plate inline-flex items-center gap-2 bg-card px-4 py-2.5 font-mono text-sm uppercase disabled:opacity-40"
-            disabled={station === 0}
+            disabled={station === AT.pick}
             onClick={() => goTo(station - 1)}
             type="button"
           >

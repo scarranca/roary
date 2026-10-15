@@ -149,13 +149,25 @@ export async function uploadLaunchVideo(repo: string, prNumber: number, mp4: Buf
 }
 
 /** Points the launch row for this PR at the video, creating the row if needed. */
-export async function saveLaunchVideo(input: { repo: string; prNumber: number; title: string; videoUrl: string }) {
+export async function saveLaunchVideo(input: {
+  repo: string;
+  prNumber: number;
+  title: string;
+  videoUrl: string;
+  workspaceId: number;
+}) {
   const { launches } = schema;
   // No unique index on (repo, prNumber), so select-then-write instead of an upsert.
   const [existing] = await db
     .select({ id: launches.id })
     .from(launches)
-    .where(and(eq(launches.repo, input.repo), eq(launches.prNumber, input.prNumber)))
+    .where(
+      and(
+        eq(launches.workspaceId, input.workspaceId),
+        eq(launches.repo, input.repo),
+        eq(launches.prNumber, input.prNumber),
+      ),
+    )
     .orderBy(desc(launches.createdAt))
     .limit(1);
   if (existing) {
