@@ -7,6 +7,7 @@ import { runDailyLaunchReview } from "../lib/daily-launch-review";
 export default defineSchedule({
   cron: "0 15 * * *",
   async run({ waitUntil }) {
-    waitUntil(runDailyLaunchReview());
+    // Error names only: pg and provider messages can echo credentials.
+    waitUntil(runDailyLaunchReview().catch((error) => console.error("[daily-launch-review]", error instanceof Error ? error.name : "failed")));
   },
 });
