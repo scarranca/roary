@@ -70,7 +70,8 @@ function toRows(feed: Feed): Row[] {
   const launches: Row[] = feed.launches.map((launch) => ({
     key: `launch-${launch.id}`,
     kind: "Launch",
-    ref: `${launch.repo}#${launch.prNumber}`,
+    // Direct pushes are stored with pr_number 0 (the short sha leads the title).
+    ref: launch.prNumber ? `${launch.repo}#${launch.prNumber}` : launch.repo,
     title: launch.title,
     details: launch.healthSummary ? [launch.healthSummary] : [],
     link: launch.videoUrl ? { href: launch.videoUrl, label: "Launch video" } : undefined,

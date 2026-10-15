@@ -249,10 +249,17 @@ Full design: `docs/CONNECT.md`. The rules you must not break:
 | 1 | Agent core + personality | `agent/agent.ts`, `agent/instructions.md`, `agent/memory/` | `eve dev` chats as Roary, `eve info` is clean |
 | 2 | Error triage | `agent/connections/{sentry,posthog}.ts`, `agent/skills/triage-error.md` | Given a Sentry issue, Roary posts the root cause, user impact and the suspect commit |
 | 3 | Fix PRs | `agent/extensions/github.ts`, `agent/channels/github.ts` | Roary opens a PR with the fix + test that links the Sentry issue, and a human merges |
-| 4 | Launch review | `agent/connections/vercel.ts`, `agent/schedules/daily-launch-review.ts`, `agent/skills/review-launch.md` | Daily report (and one per prod deploy): Vercel deploys + PRs merged in the last 24h, with the error and usage change for each |
+| 4 | Launch review | `agent/tools/{list_merged_prs,sentry_error_delta,posthog_event_delta,save_launch_review}.ts`, `agent/lib/launch-review.ts`, `agent/schedules/daily-launch-review.ts`, `agent/skills/review-launch.md` | Merged PRs + deployed pushes in the last 24h, with the Sentry and PostHog change before vs after each production deploy; stored in `launches`. Test: `scripts/launch-review-test.ts` |
 | 5 | Launch videos | `agent/tools/render_launch_video.ts`, `agent/skills/launch-video.md`, `agent/sandbox/workspace/video/` | A merged `feature` PR produces an MP4, uploaded to Vercel Blob and linked on the PR |
 
 Each workstream should be mergeable on its own. Keep PRs small and say which workstream they belong to.
+
+## Launch review
+
+- **Chat:** "Review what shipped in the last 24 hours" → the `review-launch` skill: `list_merged_prs` (merged PRs + pushes to the default branch, each anchored on its production deploy from GitHub's deployments API) → `sentry_error_delta` / `posthog_event_delta` (equal windows before vs after, clipped to now) → `save_launch_review` → Launch report.
+- **Daily:** `agent/schedules/daily-launch-review.ts`, `0 15 * * *` (15:00 UTC). Plain code, no model turn (a schedule's app principal only resolves to the demo workspace): for every workspace with connections it stores one `launches` row per change with a one-line `health_summary`. It posts nothing unless the workspace's GitHub connection config has `"launchReviewComments": true` (default off; no UI yet), and then one comment on the newest merged PR.
+- Direct pushes have no PR: they're stored with `pr_number = 0` and the short sha leading the title.
+- Sentry deltas use the **org** issues endpoint with `query=project:<slug>&start&end` (the project endpoint ignores the window; `events-stats` needs `org:read`, which the demo token lacks).
 
 ## Launch videos with HyperFrames
 
