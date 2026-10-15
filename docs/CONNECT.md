@@ -17,6 +17,8 @@ Sentry webhook / anonymous / localDev ──▶ principal without a workspace of
                        resolveWorkspace(principal)  (agent/lib/workspace.ts)
                          neon user        → their workspace (created on first touch)
                          github-webhook   → workspace whose github connection has that installationId, else demo
+                         sentry-webhook from the public Sentry App (attributes.sentry_app = "public")
+                                          → workspace whose sentry connection has that installationUuid, else demo
                          anything else    → the demo workspace ("Roary Demo Shop", is_demo)
                                                         ▼
                        credentialFor(resolved, connection, envToken)
@@ -143,12 +145,83 @@ for a deployment (from the guest 401 body of `/api/connections`) and prints the 
   403 (no `project:read`, true of the demo "Roary" internal integration) it falls back to
   `GET …/issues/?limit=1`, the scope triage needs. Stored encrypted.
 - Self-hosted Sentry and non-US region hosts aren't supported yet.
-- **Sentry webhook stays demo-only**: `agent/channels/sentry-webhook.ts` verifies one shared
-  client secret (`SENTRY_WEBHOOK_SECRET`) of the demo's internal integration, so every alert it
-  receives is the demo's. Routing a team's alerts needs a Sentry *public* integration (publish
-  request + Sentry review, redirect URL, webhook URL, client secret); its `installation.uuid` would
-  then map to a workspace the same way GitHub's `installation_id` does. A team's own Sentry still
-  works for chat-time triage today.
+- Without the public app (below), the webhook is demo-only: alerts signed with the demo's internal
+  integration secret (`SENTRY_WEBHOOK_SECRET`) go to the demo workspace. A team's own Sentry still
+  works for chat-time triage with a pasted token.
+
+## Sentry public integration (automatic triage per workspace) — behind `SENTRY_PUBLIC_INTEGRATION_ENABLED=1`
+
+Any Sentry org can install Roary (a Sentry "public integration" / Sentry App). Its issue alerts then
+start a triage in the workspace that installed it. Off by default; with the flag off, the button
+is hidden, the routes redirect with `sentry=unavailable`, and the webhook behaves exactly as before.
+
+```
+/settings/connections ──"Install Roary in Sentry"──▶ /api/connect/sentry/install
+   signs state {workspaceId, nonce, exp} (15 min), nonce in an httpOnly cookie (path /api/connect/sentry)
+   ──▶ https://sentry.io/sentry-apps/<SENTRY_APP_SLUG>/external-install/?state=…
+Sentry (person picks org, approves) ──▶ Redirect URL /api/connect/sentry/callback?code&installationId&orgSlug&state
+   checks state signature + expiry + nonce cookie + "state's workspace is the signed-in user's"
+   POST /api/0/sentry-app-installations/<uuid>/authorizations/ {grant_type: authorization_code, code, client_id, client_secret}
+   GET  /api/0/sentry-app-installations/<uuid>/        → org slug (the query's orgSlug is only a fallback)
+   PUT  /api/0/sentry-app-installations/<uuid>/ {status: "installed"}   ("Verify Install")
+   GET  /api/0/organizations/<org>/projects/           → pre-select the project if there's exactly one
+   upsert connections(workspace, 'sentry'): status connected, secret_ciphertext = token (AES-GCM),
+          config {org, project?, installationUuid, expiresAt, source: "sentry-app"}
+Sentry issue webhook ──▶ POST /sentry/webhook (agent/channels/sentry-webhook.ts)
+   signature with SENTRY_WEBHOOK_SECRET?  → demo path, unchanged
+   else (flag on) with SENTRY_CLIENT_SECRET? → public path:
+     installation.created  → 200, nothing (no state there; the callback does the exchange)
+     installation.deleted  → connection status "disconnected", token dropped
+     issue / event_alert   → installation.uuid → connection (status connected) → claim incident in that
+                             workspace → start a session as {authenticator "sentry-webhook",
+                             attributes {sentry_app: "public", installation_uuid}} → resolveWorkspace
+                             routes it to that workspace; unknown/uninstalled → 200 "unknown installation"
+   neither → 401
+credentialFor(row) for a Sentry App row: token as is, or — within 5 min of expiry (tokens live 8h) —
+   refresh under pg_advisory_xact_lock(connection id), re-read, POST …/authorizations/
+   {grant_type: "urn:sentry:params:oauth:grant-type:jwt-bearer"} with Bearer HS256 JWT signed by the
+   client secret (iss = sub = client id, jti, 60 s), store the new token + expiresAt.
+```
+
+- **Code:** `agent/lib/sentry-app.ts` (HTTP: flag, install URL, signature, exchange, refresh),
+  `agent/lib/sentry-app-store.ts` (DB: claim, refresh-with-lock, uninstall, incident claim),
+  `apps/web/lib/connections/sentry-state.ts`, `apps/web/app/api/connect/sentry/{install,callback}/route.ts`.
+- **Ownership:** the grant code is single use and only reaches the installer's browser (and our
+  webhook), so a successful exchange proves the install; the signed state + nonce cookie bind it
+  to the workspace of whoever clicked the button. A connected installation can't be claimed by a
+  second workspace. Installs started from Sentry's own Integrations page (no `state`) land on
+  `/settings/connections?sentry=start_here`: click the button in Roary to bind one.
+- **Dedupe per workspace:** `incidents.sentry_issue_id` is globally unique, but short ids
+  (`WEB-1`) aren't unique across orgs. The claim uses the short id, and if *another* workspace holds
+  it, falls back to `<shortId>@ws<workspaceId>` (the triage message tells Roary which key to save).
+  No migration. A future migration could make the unique key `(workspace_id, sentry_issue_id)`.
+- **Org-wide:** an install covers every project in the org. `list_sentry_issues` searches the
+  whole org when no single project is set; `get_sentry_issue` is org-scoped already.
+- **Test button** on the card refreshes the token if due and checks `GET /organizations/{org}/issues/?limit=1`.
+
+### Human checklist (not done by code)
+
+1. **Create the integration** — sentry.io → Settings → Developer Settings → *Create New
+   Integration* → **Public Integration**:
+   - Name: `Roary`; Author: your team; Webhook URL: `https://roary-rho.vercel.app/sentry/webhook`
+   - Redirect URL: `https://roary-rho.vercel.app/api/connect/sentry/callback`
+   - **Verify Install: on** (the callback PUTs `status: installed`)
+   - Alert Rule Action: optional (on lets teams pick Roary in alert rules → `event_alert` webhooks, also routed)
+   - Permissions: **Project: Read**, **Issue & Event: Read**, **Organization: Read**; everything else *No Access*
+   - Webhooks: check **issue** (sends `issue.created`; installation webhooks are always sent)
+   - Save. Copy the **slug** (URL of the integration page), **Client ID** and **Client Secret**.
+2. **Set env on Vercel** (project `roary`, team `roary-hack`) for Preview first:
+   `SENTRY_APP_SLUG`, `SENTRY_CLIENT_ID`, `SENTRY_CLIENT_SECRET` (sensitive),
+   `SENTRY_PUBLIC_INTEGRATION_ENABLED=1`. `CONNECTIONS_ENCRYPTION_KEY` and `DATABASE_URL` are already set.
+   Keep `SENTRY_WEBHOOK_SECRET` for the demo shop.
+3. **Try it on a preview** (unpublished integrations can be installed in the org that owns them):
+   sign in → `/settings/connections` → *Install Roary in Sentry* → approve → back to the page with
+   "Sentry connected". Trigger an error in a project of that org → a new incident in that workspace.
+   Point the Redirect/Webhook URLs at the preview host while testing, then back to production.
+4. **Publish** — on the integration page, *Publish* → fill Sentry's form (description, logo, docs
+   link, privacy policy, support contact). Sentry reviews it; until approved only the owner org can install.
+5. **Enable in production**: add the same four env vars to Production and redeploy.
+6. **Uninstall check**: uninstall in Sentry → the card shows "Uninstalled" and alerts stop routing.
 
 ## PostHog
 
@@ -168,6 +241,9 @@ picks it per turn.
 | `GITHUB_CONNECT_ENABLED=1` | optional, per Vercel environment | `1`/`true` shows the GitHub connect button and enables the install/callback routes. Read per request; set on Preview first. |
 | `CONNECTIONS_STORE=memory` | tests only | In-memory store. |
 | `GITHUB_CONNECTOR`, `GITHUB_APP_SLUG` | optional | Default `github/roary`, `myroary`. |
+| `SENTRY_WEBHOOK_SECRET` | agent | Demo shop's internal integration client secret (demo webhook path). |
+| `SENTRY_PUBLIC_INTEGRATION_ENABLED=1` | web + agent, optional | Public Sentry App: install button, callback, webhook routing. Off by default. |
+| `SENTRY_APP_SLUG`, `SENTRY_CLIENT_ID`, `SENTRY_CLIENT_SECRET` | web + agent | The public integration's slug and credentials. All three plus the flag, or the feature stays off. |
 
 ## Tests
 
@@ -181,4 +257,7 @@ npx tsx scripts/github-connect-smoke.ts <deployment url>                 # flag 
 npx eve dev --no-ui & npx next dev apps/web -p 3101 &
 npx tsx --env-file=<that env> scripts/test-workspaces.ts                # a–d, d = full web → agent round trip
 npx tsx --env-file=<that env> scripts/connections-ui-test.ts            # guest; MODE=member for a signed-in user
+# Public Sentry App, Sentry mocked, synthetic signed webhooks, no eve dev (writes + cleans up on the branch):
+neon env pull --project-id young-surf-15904408 --branch dev-connect --file .env.devconnect
+npx tsx --env-file=.env.devconnect scripts/sentry-public-integration-test.ts
 ```

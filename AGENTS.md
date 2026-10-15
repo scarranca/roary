@@ -208,8 +208,10 @@ Full design: `docs/CONNECT.md`. The rules you must not break:
 
 - **Every turn runs in a workspace.** `resolveWorkspace(principal)` (`agent/lib/workspace.ts`): a
   verified Neon Auth user → their own workspace (created on first touch); a GitHub webhook → the
-  workspace that connected that `installation_id`, else the demo; everyone else (guests, localDev,
-  the Sentry webhook) → the single `is_demo` workspace "Roary Demo Shop". In tools use
+  workspace that connected that `installation_id`, else the demo; a public Sentry App alert → the
+  workspace that installed that `installation.uuid` (behind `SENTRY_PUBLIC_INTEGRATION_ENABLED`);
+  everyone else (guests, localDev, the demo shop's Sentry webhook) → the single `is_demo` workspace
+  "Roary Demo Shop". In tools use
   `workspaceForTurn(ctx)` (`agent/lib/workspace-context.ts`); in the web app use
   `getUserWorkspace()` / `getCurrentWorkspace()` (`apps/web/lib/connections/workspace.ts`). Never
   take a workspace id from the browser or the model.

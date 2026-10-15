@@ -21,9 +21,18 @@ const GITHUB_ERROR_DETAILS: Record<string, string> = {
   state_browser: "Finish the install in the same browser you started it in.",
 };
 
+// Outcomes of the Sentry App round trip (/api/connect/sentry/callback).
+const SENTRY_NOTICES: Record<string, { ok: boolean; text: string }> = {
+  connected: { ok: true, text: "Sentry connected. New issues in your org now start a Roary triage." },
+  start_here: { ok: false, text: "Roary was installed from Sentry directly. Click Install Roary in Sentry here so we know which workspace it's for." },
+  signin: { ok: false, text: "Sign in first, then install Roary in Sentry." },
+  unavailable: { ok: false, text: "The Sentry app isn't set up on this server yet." },
+  error: { ok: false, text: "Sentry install didn't finish." },
+};
+
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const { github, detail } = await searchParams;
-  const base = github ? GITHUB_NOTICES[github] : undefined;
+  const { github, sentry, detail } = await searchParams;
+  const base = github ? GITHUB_NOTICES[github] : sentry ? SENTRY_NOTICES[sentry] : undefined;
   const explained = github === "error" && detail ? GITHUB_ERROR_DETAILS[detail] : undefined;
   const notice = base && explained ? { ok: false, text: explained } : base;
   return (
