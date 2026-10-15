@@ -424,7 +424,7 @@ function SentryForm({ onDone, webhookUrl }: { readonly onDone: () => Promise<voi
       <Labeled hint="the integration's token (or an org token)" label="Auth token">
         {(id) => <input autoComplete="off" className={FIELD} id={id} name="token" required spellCheck={false} type="password" />}
       </Labeled>
-      <Labeled hint="optional · turns on automatic triage" label="Client secret">
+      <Labeled hint="optional · turns on automatic triage (empty keeps the current one)" label="Client secret">
         {(id) => <input autoComplete="off" className={FIELD} id={id} name="clientSecret" spellCheck={false} type="password" />}
       </Labeled>
       <div className="grid grid-cols-2 gap-3">

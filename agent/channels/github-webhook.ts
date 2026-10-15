@@ -60,7 +60,15 @@ export default defineChannel({
         attributes: { workspace_public_id: workspace.publicId, github_login: body.sender?.login ?? "" },
       };
       const context = await workspaceContext(auth);
-      waitUntil(from(plan.address).send(`${context}\n\n${plan.message}`, { auth }));
+      waitUntil(
+        from(plan.address)
+          .send(`${context}\n\n${plan.message}`, { auth })
+          .catch(async (error: unknown) => {
+            // Nothing started: forget the delivery so GitHub's "Redeliver" can try again.
+            console.warn("github quick-connect session not started", { error: error instanceof Error ? error.name : "unknown" });
+            if (delivery) await releaseDelivery(workspace.id, "github", delivery).catch(() => undefined);
+          }),
+      );
       return Response.json({ ok: true, started: plan.title }, { status: 202 });
     }),
   ],

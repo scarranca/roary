@@ -97,12 +97,18 @@ const sentryRoute = await routeOf("../agent/channels/sentry-workspace-webhook", 
 const demoSentryRoute = await routeOf("../agent/channels/sentry-webhook", "/sentry/webhook");
 
 type Sent = { address: string; message: string; auth: any };
+let failSends = false; // simulate eve refusing to start the session
 async function drive(route: Route, path: string, params: Record<string, string>, headers: Record<string, string>, raw: string) {
   const sent: Sent[] = [];
   const pending: Promise<unknown>[] = [];
   const response = await route.handler(new Request(`https://roary.test${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: raw }), {
     params,
-    from: (address: string) => ({ send: async (message: string, options: { auth: unknown }) => void sent.push({ address, message, auth: options.auth }) }),
+    from: (address: string) => ({
+      send: async (message: string, options: { auth: unknown }) => {
+        if (failSends) throw new Error("send failed");
+        sent.push({ address, message, auth: options.auth });
+      },
+    }),
     waitUntil: (task: Promise<unknown>) => pending.push(task),
   });
   await Promise.all(pending);
@@ -326,11 +332,36 @@ try {
   check("installation webhook → 200, nothing starts", (await postSentry(wsD.publicId, "installation", { action: "created" }, clientD)).sent.length === 0);
   sentryCalls.length = 0;
   const alert = await postSentry(wsD.publicId, "event_alert", { action: "triggered", data: { event: { issue_id: "71003", title: "Alert", project_slug: "web" } } }, clientD);
-  check("event_alert → short id looked up with D's own token, never SENTRY_AUTH_TOKEN", alert.status === 202 && sentryCalls.some((c) => c.auth === `Bearer ${tokD}`) && !sentryCalls.some((c) => c.auth.includes(DEMO_SENTRY_TOKEN)));
+  check("event_alert → short id looked up with D's own token, never SENTRY_AUTH_TOKEN", alert.status === 202 && sentryCalls.some((c) => c.auth === `Bearer ${tokD}`) && !sentryCalls.some((c) => (c.auth ?? "").includes(DEMO_SENTRY_TOKEN)));
   process.env.ROARY_USER_MSGS_PER_HOUR = "1";
-  const limitedSentry = await postSentry(wsD.publicId, "issue", sentryIssue("71004", `QCTEST-${RUN}-4`), clientD);
+  const limitedReq = randomUUID();
+  const limitedSentry = await postSentry(wsD.publicId, "issue", sentryIssue("71004", `QCTEST-${RUN}-4`), clientD, limitedReq);
   check("sentry: limits apply per workspace (200 rate_limited)", limitedSentry.status === 200 && limitedSentry.sent.length === 0 && limitedSentry.body.includes("rate_limited"));
+  const [heldIncident] = await db.select().from(schema.incidents).where(eq(schema.incidents.sentryIssueId, `QCTEST-${RUN}-4`));
+  check("…and the refused alert keeps no incident claim", heldIncident === undefined);
   delete process.env.ROARY_USER_MSGS_PER_HOUR;
+  const redeliveredSentry = await postSentry(wsD.publicId, "issue", sentryIssue("71004", `QCTEST-${RUN}-4`), clientD, limitedReq);
+  check("…so its redelivery triages once the cap allows", redeliveredSentry.status === 202 && redeliveredSentry.sent.length === 1);
+
+  // eve refusing to start a session releases the claims (a redelivery works)
+  failSends = true;
+  const failReq = randomUUID();
+  const failedSentry = await postSentry(wsD.publicId, "issue", sentryIssue("71005", `QCTEST-${RUN}-5`), clientD, failReq);
+  const failGhDelivery = randomUUID();
+  await postGithub(wsB.publicId, "issue_comment", comment(REPO_B, "@roary hi", 11), secretB, failGhDelivery);
+  failSends = false;
+  const [failedIncident] = await db.select().from(schema.incidents).where(eq(schema.incidents.sentryIssueId, `QCTEST-${RUN}-5`));
+  check("sentry: a session that fails to start leaves no claims", failedSentry.sent.length === 0 && failedIncident === undefined);
+  check("…and its redelivery triages", (await postSentry(wsD.publicId, "issue", sentryIssue("71005", `QCTEST-${RUN}-5`), clientD, failReq)).sent.length === 1);
+  check("github: a session that fails to start releases the delivery for redelivery", (await postGithub(wsB.publicId, "issue_comment", comment(REPO_B, "@roary hi", 11), secretB, failGhDelivery)).sent.length === 1);
+
+  // "Replace key" without the client secret keeps automatic triage (same org); another org clears it
+  await service.saveSentry(wsD.id, { token: tokD, org: "acme", project: "web" });
+  const [keptD] = await db.select().from(schema.connections).where(eq(schema.connections.id, rowD!.id));
+  check("sentry replace key, no client secret, same org → webhook kept", (keptD!.config as any).source === "internal" && crypto.openWebhookSecret({ ...keptD!, webhookSecretCiphertext: keptD!.webhookSecretCiphertext! }) === clientD);
+  await service.saveSentry(wsD.id, { token: tokD, org: "acme-two", project: "web" });
+  const [clearedD] = await db.select().from(schema.connections).where(eq(schema.connections.id, rowD!.id));
+  check("sentry replace key for another org without a secret → webhook off", (clearedD!.config as any).source === undefined && clearedD!.webhookSecretCiphertext === null && (await postSentry(wsD.publicId, "issue", sentryIssue("71006", "X-6"), clientD)).status === 404);
 
   // 8. The existing demo webhook is untouched
   const demoRaw = JSON.stringify({ action: "created", data: { issue: { id: "1" } } });

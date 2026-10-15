@@ -1,5 +1,5 @@
 import { newWebhookSecret, openConnectionSecret, sealConnectionSecret, sealWebhookSecret } from "../../../../agent/lib/crypto";
-import { githubPatConfig } from "../../../../agent/lib/quick-connect-config";
+import { githubPatConfig, sentryInternalConfig } from "../../../../agent/lib/quick-connect-config";
 import { type SentryAppConfig, sentryAppConfig } from "../../../../agent/lib/sentry-app";
 import { getConnectionStore, InstallationClaimedError } from "./store";
 import { type Connection, type Provider, type PublicConnection, type SentryConfig, toPublic } from "./types";
@@ -36,13 +36,18 @@ export async function saveSentry(
   if (!check.ok) return failed(check);
   const clientSecret = input.clientSecret?.trim();
   const store = await getConnectionStore();
+  // "Replace key" with the client-secret field left empty keeps automatic triage for the same org.
+  const existing = clientSecret ? null : await store.get(workspaceId, "sentry");
+  const keepWebhook = Boolean(existing?.webhookSecretCiphertext && sentryInternalConfig(existing)?.org === base.org);
+  const internal = Boolean(clientSecret) || keepWebhook;
   const connection = await store.upsert({
     workspaceId,
     provider: "sentry",
     status: "connected",
-    config: clientSecret ? { ...base, source: "internal" as const } : base,
+    config: internal ? { ...base, source: "internal" as const } : base,
     secretCiphertext: sealConnectionSecret(workspaceId, "sentry", input.token.trim()),
-    webhookSecretCiphertext: clientSecret ? sealWebhookSecret(workspaceId, "sentry", clientSecret) : null,
+    // undefined keeps the stored secret; null clears it (a plain token for another org, or none before).
+    webhookSecretCiphertext: clientSecret ? sealWebhookSecret(workspaceId, "sentry", clientSecret) : keepWebhook ? undefined : null,
     connectorRef: null,
   });
   return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };

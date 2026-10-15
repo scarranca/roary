@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { defineChannel, POST } from "eve/channels";
+import { db, schema } from "../lib/db";
 import { claimDelivery, loadWebhookTarget, releaseDelivery } from "../lib/quick-connect";
 import { sentryInternalConfig } from "../lib/quick-connect-config";
 import { issueFromPayload, verifySentrySignature } from "../lib/sentry-app";
@@ -50,10 +52,15 @@ export default defineChannel({
       const claimed = await claimIncident(workspace.id, incidentKey, issue.title);
       if (!claimed) return Response.json({ ok: true, duplicate: "already triaged" });
 
+      // Undo both claims when nothing starts, so a redelivery (or the issue's next alert) triages it.
+      const unclaim = async () => {
+        await db.delete(schema.incidents).where(eq(schema.incidents.id, claimed.id));
+        if (delivery) await releaseDelivery(workspace.id, "sentry", delivery);
+      };
       const decision = await admitWebhookMessage(workspace.id);
       if (!decision.ok) {
         // 200, not 429: Sentry disables webhooks that keep failing.
-        if (delivery) await releaseDelivery(workspace.id, "sentry", delivery);
+        await unclaim();
         return Response.json({ ok: false, reason: "rate_limited", message: decision.message, resetsAt: decision.resetsAt.toISOString() });
       }
 
@@ -75,7 +82,11 @@ export default defineChannel({
               attributes: { sentry_app: "internal", workspace_public_id: workspace.publicId },
             },
           },
-        ),
+        )
+          .catch(async (error: unknown) => {
+            console.warn("sentry quick-connect triage not started", { error: error instanceof Error ? error.name : "unknown" });
+            await unclaim().catch(() => undefined);
+          }),
       );
       return Response.json({ ok: true, issueId: issue.id, incident: claimed.key }, { status: 202 });
     }),
