@@ -94,8 +94,9 @@ await memory.upsert({
 const webRow = (await memory.get(77, "sentry"))!;
 const asAgentRow = (workspaceId: number, isDemo: boolean) => {
   const now = new Date();
-  const connection = { ...webRow, id: 1, workspaceId, createdAt: now, updatedAt: now, config: webRow.config as Record<string, unknown> };
-  return { resolved: { workspace: { id: workspaceId, name: "w", ownerUserId: "u", isDemo, createdAt: now }, connections: [connection] }, connection };
+  const connection = { ...webRow, id: 1, workspaceId, createdAt: now, updatedAt: now, config: webRow.config as Record<string, unknown>, webhookSecretCiphertext: null };
+  const workspace = { id: workspaceId, name: "w", ownerUserId: "u", isDemo, publicId: "0".repeat(32), createdAt: now };
+  return { resolved: { workspace, connections: [connection] }, connection };
 };
 const own = asAgentRow(77, false);
 check("web-sealed secret decrypts in the agent (credentialFor)", (await credentialFor(own.resolved, own.connection, "env-demo-token")) === token);

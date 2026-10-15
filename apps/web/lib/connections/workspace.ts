@@ -6,7 +6,7 @@ import { getSessionUserId } from "@/lib/auth/server";
 // may reconfigure from the web.
 
 export type Workspace =
-  | { kind: "user"; id: number; userId: string }
+  | { kind: "user"; id: number; userId: string; publicId: string }
   | { kind: "demo"; id: number };
 
 /** For a signed-in caller only; guests get null without touching the database. */
@@ -15,7 +15,7 @@ export async function getUserWorkspace(): Promise<Extract<Workspace, { kind: "us
   if (!userId) return null;
   const { NEON_AUTH_AUTHENTICATOR, resolveWorkspace } = await import("../../../../agent/lib/workspace");
   const { workspace } = await resolveWorkspace({ authenticator: NEON_AUTH_AUTHENTICATOR, principalType: "user", principalId: userId });
-  return { kind: "user", id: workspace.id, userId };
+  return { kind: "user", id: workspace.id, userId, publicId: workspace.publicId };
 }
 
 export async function getCurrentWorkspace(): Promise<Workspace> {

@@ -73,6 +73,26 @@ export function openConnectionSecret(row: { workspaceId: number; provider: strin
   return decryptSecret(row.secretCiphertext, secretAad(row.workspaceId, row.provider));
 }
 
+/** A webhook signing secret's AAD differs from the API token's, so neither can stand in for the other. */
+function webhookAad(workspaceId: number, provider: string) {
+  return `${secretAad(workspaceId, provider)}:webhook`;
+}
+
+/** Encrypts a workspace's own webhook signing secret for `connections.webhook_secret_ciphertext`. */
+export function sealWebhookSecret(workspaceId: number, provider: string, plaintext: string): string {
+  return encryptSecret(plaintext, webhookAad(workspaceId, provider));
+}
+
+/** Decrypts `connections.webhook_secret_ciphertext` with that row's own AAD. */
+export function openWebhookSecret(row: { workspaceId: number; provider: string; webhookSecretCiphertext: string }): string {
+  return decryptSecret(row.webhookSecretCiphertext, webhookAad(row.workspaceId, row.provider));
+}
+
+/** A fresh random webhook secret (GitHub repo webhooks), 32 bytes as hex. */
+export function newWebhookSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
 /** `<payload>.<hmac>`: tamper-evident, not secret. Used for the GitHub install `state`. */
 export function signPayload(payload: object): string {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");

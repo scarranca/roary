@@ -43,6 +43,13 @@
       "when": 1792037100305,
       "tag": "0005_sessions_and_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792039857588,
+      "tag": "0006_quick_connect",
+      "breakpoints": true
     }
   ]
 }

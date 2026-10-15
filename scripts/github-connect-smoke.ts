@@ -75,7 +75,7 @@ Human steps (passkey / OAuth consent; an agent must not do these):
 
   2. Sign in to Roary:            ${base}/hire   (account menu → Sign in)
   3. Open connections:            ${base}/settings/connections
-     The GitHub card must show "Install Roary on your repos" (not "Coming soon").
+     The GitHub card must show "Install the GitHub App" next to "Quick connect".
   4. Click it (or open directly): ${base}/api/connect/github/install
      → github.com/apps/${APP_SLUG}/installations/new → pick an account + "Only select repositories".
   5. GitHub redirects to the callback. The first time, Vercel Connect sends you to GitHub's

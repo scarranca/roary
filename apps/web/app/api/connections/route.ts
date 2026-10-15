@@ -1,4 +1,5 @@
 import { hasEncryptionKey } from "../../../../../agent/lib/crypto";
+import { webhookPaths } from "../../../../../agent/lib/quick-connect-config";
 import { sentryAppCredentials } from "../../../../../agent/lib/sentry-app";
 import { githubConnectEnabled } from "@/lib/connections/github-user";
 import { getConnectionStore } from "@/lib/connections/store";
@@ -12,7 +13,8 @@ const sentryAppReady = () => sentryAppCredentials() !== null;
 
 // The signed-in user's stack, for the cards. Never returns secrets. Guests get 401 (they use
 // the demo shop, which can't be reconfigured); the body still says so for the UI.
-export async function GET() {
+// `webhooks`: this workspace's quick-connect URLs (GitHub repo webhook, Sentry internal integration).
+export async function GET(request: Request) {
   const workspace = await getUserWorkspace().catch(() => undefined);
   if (workspace === undefined) return Response.json({ error: "Couldn't load your workspace right now." }, { status: 503 });
   if (!workspace) {
@@ -26,8 +28,19 @@ export async function GET() {
     const rows = await store.list(workspace.id);
     const connections: Record<string, PublicConnection | null> = Object.fromEntries(PROVIDERS.map((p) => [p, null]));
     for (const row of rows) connections[row.provider] = toPublic(row);
+    const origin = new URL(request.url).origin;
+    const paths = webhookPaths(workspace.publicId);
+    const webhooks = { github: `${origin}${paths.github}`, sentry: `${origin}${paths.sentry}` };
     return Response.json(
-      { signedIn: true, store: store.kind, encryptionReady: hasEncryptionKey(), githubEnabled: githubConnectEnabled(), sentryAppEnabled: sentryAppReady(), connections },
+      {
+        signedIn: true,
+        store: store.kind,
+        encryptionReady: hasEncryptionKey(),
+        githubEnabled: githubConnectEnabled(),
+        sentryAppEnabled: sentryAppReady(),
+        connections,
+        webhooks,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

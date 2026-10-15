@@ -1,6 +1,8 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { openConnectionSecret } from "./crypto";
 import { db, schema } from "./db";
+import { findWorkspaceByPublicId } from "./quick-connect";
+import { GITHUB_PAT_WEBHOOK_AUTHENTICATOR, githubPatConfig } from "./quick-connect-config";
 import type { ConnectionProvider } from "./schema";
 import { sentryAppConfig } from "./sentry-app";
 import { findSentryInstallation, sentryAppToken, sentryConnectionUsable } from "./sentry-app-store";
@@ -18,7 +20,9 @@ export const GITHUB_WEBHOOK_AUTHENTICATOR = "github-webhook";
 /**
  * The authenticator agent/channels/sentry-webhook.ts stamps on alert-started turns. Only turns
  * started by the PUBLIC Sentry App (signature checked with SENTRY_CLIENT_SECRET) carry
- * attributes {sentry_app: "public", installation_uuid}, which route to a workspace.
+ * attributes {sentry_app: "public", installation_uuid}, which route to a workspace. Turns from
+ * a workspace's own internal integration (agent/channels/sentry-workspace-webhook.ts) carry
+ * {sentry_app: "internal", workspace_public_id}.
  */
 export const SENTRY_WEBHOOK_AUTHENTICATOR = "sentry-webhook";
 
@@ -118,17 +122,32 @@ export async function findWorkspaceBySentryInstallation(installationUuid: string
   return workspace;
 }
 
+/** A quick-connect webhook principal's workspace public id ("" if malformed), or null for anyone else. */
+function quickConnectPublicId(principal: Principal): string | null {
+  const isGithub = principal?.authenticator === GITHUB_PAT_WEBHOOK_AUTHENTICATOR;
+  const isSentry = principal?.authenticator === SENTRY_WEBHOOK_AUTHENTICATOR && principal.attributes?.sentry_app === "internal";
+  if (!isGithub && !isSentry) return null;
+  const id = principal.attributes?.workspace_public_id;
+  return typeof id === "string" ? id : "";
+}
+
 /**
  * The caller's workspace and its connections:
  * - a verified Neon Auth user → their own workspace (created on first touch);
  * - a GitHub webhook turn → the workspace that connected that installation, else the demo;
  * - a public Sentry App webhook turn → the workspace that installed it, else the demo;
+ * - a quick-connect webhook turn (the workspace's own GitHub repo webhook or Sentry internal
+ *   integration) → the workspace named by its public id, and never the demo: an unknown id throws;
  * - everyone else (guests, localDev, Vercel OIDC, the Sentry webhook) → the demo workspace.
  */
 export async function resolveWorkspace(principal: Principal): Promise<ResolvedWorkspace> {
   const userId = workspaceUserId(principal);
   let workspace: Workspace | undefined;
-  if (userId) {
+  const quickConnectId = quickConnectPublicId(principal);
+  if (quickConnectId !== null) {
+    workspace = quickConnectId ? await findWorkspaceByPublicId(quickConnectId) : undefined;
+    if (!workspace || workspace.isDemo) throw new Error("The workspace for this webhook no longer exists.");
+  } else if (userId) {
     workspace = (await findUserWorkspace(userId)) ?? (await createUserWorkspace(userId));
   } else if (principal?.authenticator === GITHUB_WEBHOOK_AUTHENTICATOR) {
     const installationId = principal.attributes?.installation_id;
@@ -154,7 +173,8 @@ export function findConnection(resolved: ResolvedWorkspace, provider: Connection
  * The single place a provider credential is chosen, in this order:
  * 1. the connection's own secret (AES-GCM, agent/lib/crypto.ts, AAD = its workspace + provider),
  *    as saved by the web app's /api/connections routes. A Sentry App install's token (8h) is
- *    refreshed here when it is about to expire (agent/lib/sentry-app.ts);
+ *    refreshed here when it is about to expire (agent/lib/sentry-app.ts). A GitHub personal
+ *    access token (config.mode "pat") is used only while the connection is `connected`;
  * 2. its Vercel Connect connector (`connector_ref`): an app token from that connector, pinned to
  *    the workspace's installation for `github`;
  * 3. the app-level env token, but only for the demo workspace.
@@ -167,6 +187,12 @@ export async function credentialFor(
 ): Promise<string | null> {
   if (!connection) return null;
   if (sentryAppConfig(connection)) return sentryAppToken(connection);
+  // A personal access token is the only GitHub credential such a workspace has: never Connect,
+  // never the demo's app token.
+  if (githubPatConfig(connection)) {
+    if (resolved.workspace.isDemo || connection.status !== "connected" || !connection.secretCiphertext) return null;
+    return openConnectionSecret({ ...connection, secretCiphertext: connection.secretCiphertext });
+  }
   if (connection.secretCiphertext) {
     return openConnectionSecret({ ...connection, secretCiphertext: connection.secretCiphertext });
   }

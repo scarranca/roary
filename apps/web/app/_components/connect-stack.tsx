@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLinkIcon, LoaderIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, ExternalLinkIcon, LoaderIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useState } from "react";
 import { authClient } from "@/lib/auth/client";
 import type { Provider, PublicConnection } from "@/lib/connections/types";
@@ -13,6 +13,8 @@ type Stack = {
   /** SENTRY_PUBLIC_INTEGRATION_ENABLED: shows "Install Roary in Sentry". */
   sentryAppEnabled?: boolean;
   connections: Record<Provider, PublicConnection | null>;
+  /** Quick connect: this workspace's own webhook URLs (signed in only). */
+  webhooks?: { github: string; sentry: string };
 };
 
 const NO_CONNECTIONS = { github: null, sentry: null, posthog: null } as const;
@@ -101,9 +103,10 @@ export function ConnectStack({ notice, onSkip }: { readonly notice?: ReactNode; 
               loading={!stack && !loadError}
               onChange={load}
               provider={provider}
+              githubAppEnabled={provider.id === "github" && stack?.signedIn === true && stack.githubEnabled === true}
               sentryAppEnabled={provider.id === "sentry" && stack?.signedIn === true && stack.sentryAppEnabled === true}
               signedIn={stack?.signedIn ?? false}
-              unavailable={provider.id === "github" && stack?.signedIn === true && !stack.githubEnabled && !stack.connections.github}
+              webhookUrl={provider.id === "posthog" ? undefined : stack?.webhooks?.[provider.id]}
             />
           </li>
         ))}
@@ -137,8 +140,28 @@ function StatusTag({ status }: { readonly status: CardStatus }) {
   );
 }
 
+const DAY_MS = 86_400_000;
+
+/** Days until a GitHub token expires (null: no expiry). */
+function daysLeft(expiresAt: unknown): number | null {
+  if (typeof expiresAt !== "string") return null;
+  const ms = Date.parse(expiresAt);
+  return Number.isNaN(ms) ? null : Math.floor((ms - Date.now()) / DAY_MS);
+}
+
+function isGithubPat(connection: PublicConnection | null): boolean {
+  return connection?.provider === "github" && (connection.config as { mode?: string }).mode === "pat";
+}
+
 function describe(connection: PublicConnection): string {
   const config = connection.config as Record<string, unknown>;
+  if (isGithubPat(connection)) {
+    const repos = (config.repos as string[] | undefined) ?? [];
+    const days = daysLeft(config.expiresAt);
+    const expiry = days === null ? "no expiry" : days < 0 ? "expired" : `expires in ${days} day${days === 1 ? "" : "s"}`;
+    if (connection.status === "error") return `@${config.login} · GitHub refused the token or a repo. Run Test, or replace the token.`;
+    return `Connected as @${config.login} · ${repos.length} repo${repos.length === 1 ? "" : "s"} · ${expiry}`;
+  }
   if (connection.provider === "github") {
     const repos = (config.repos as string[] | undefined) ?? [];
     if (!config.installationId) return "An org owner has to approve the install on GitHub.";
@@ -147,6 +170,7 @@ function describe(connection: PublicConnection): string {
     return `${repos.length} repo${repos.length === 1 ? "" : "s"}${repos.length ? ` · ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? "…" : ""}` : ""}`;
   }
   if (connection.provider === "sentry") {
+    if (config.source === "internal") return `${config.org} / ${config.project} · your integration's alerts start triage`;
     if (config.source !== "sentry-app") return `${config.org} / ${config.project}`;
     if (connection.status === "disconnected") return `${config.org} · Roary was uninstalled in Sentry`;
     return `${config.org} / ${config.project ?? "all projects"} · Sentry app, alerts start triage`;
@@ -160,22 +184,28 @@ function ProviderCard({
   signedIn,
   loading,
   onChange,
-  unavailable = false,
+  githubAppEnabled = false,
   sentryAppEnabled = false,
+  webhookUrl,
 }: {
   readonly provider: (typeof PROVIDERS)[number];
   readonly connection: PublicConnection | null;
   readonly signedIn: boolean;
   readonly loading: boolean;
-  /** GitHub connect is behind GITHUB_CONNECT_ENABLED until its ownership check is verified end to end. */
-  readonly unavailable?: boolean;
+  /** The GitHub App install, second to quick connect, behind GITHUB_CONNECT_ENABLED. */
+  readonly githubAppEnabled?: boolean;
   /** Public Sentry App install (SENTRY_PUBLIC_INTEGRATION_ENABLED), next to pasting a token. */
   readonly sentryAppEnabled?: boolean;
+  /** This workspace's quick-connect webhook URL for the provider. */
+  readonly webhookUrl?: string;
   readonly onChange: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string }>();
+  // A just-created GitHub webhook secret: shown once, gone on reload.
+  const [webhookSecret, setWebhookSecret] = useState<string>();
+  const days = isGithubPat(connection) ? daysLeft((connection?.config as { expiresAt?: unknown }).expiresAt) : null;
   const status: CardStatus = !signedIn ? "demo" : (connection?.status ?? "none") === "none" ? "none" : (connection?.status as CardStatus);
 
   const test = async () => {
@@ -204,25 +234,29 @@ function ProviderCard({
       </div>
 
       <p className="font-mono text-sm">
-        {!signedIn
-          ? provider.demo
-          : connection
-            ? describe(connection)
-            : unavailable
-              ? "Coming soon. Until then Roary reads code and opens PRs only on the demo shop's repo."
-              : "Not connected yet."}
+        {!signedIn ? provider.demo : connection ? describe(connection) : "Not connected yet."}
       </p>
+      {days !== null && days < 14 ? (
+        <p className="font-mono text-broken text-xs uppercase" role="status">
+          {days < 0 ? "This token has expired. Paste a new one." : "This token expires soon. Make a new one on GitHub and paste it with Replace token."}
+        </p>
+      ) : null}
 
-      {signedIn && !unavailable ? (
+      {signedIn ? (
         <div className="flex flex-wrap gap-2">
           {provider.id === "github" ? (
-            <a
-              className={cn(BUTTON, "bg-safety text-ink")}
-              href="/api/connect/github/install"
-              rel="noopener"
-              target="_blank"
+            <button
+              aria-expanded={open}
+              className={cn(BUTTON, open ? "bg-label" : "bg-safety text-ink")}
+              onClick={() => setOpen((o) => !o)}
+              type="button"
             >
-              {connection?.status === "connected" ? "Change repos" : "Install Roary on your repos"}
+              {open ? "Cancel" : isGithubPat(connection) ? "Replace token" : "Quick connect"}
+            </button>
+          ) : null}
+          {provider.id === "github" && githubAppEnabled ? (
+            <a className={cn(BUTTON, "bg-card")} href="/api/connect/github/install" rel="noopener" target="_blank">
+              {connection?.status === "connected" && !isGithubPat(connection) ? "Change repos" : "Install the GitHub App"}
               <ExternalLinkIcon className="size-3.5" />
             </a>
           ) : null}
@@ -242,7 +276,7 @@ function ProviderCard({
               onClick={() => setOpen((o) => !o)}
               type="button"
             >
-              {open ? "Cancel" : connection ? "Replace key" : sentryAppEnabled ? "Paste a token" : "Connect"}
+              {open ? "Cancel" : connection ? "Replace key" : provider.id === "sentry" ? "Quick connect" : "Connect"}
             </button>
           ) : null}
           {connection ? (
@@ -260,8 +294,22 @@ function ProviderCard({
         </p>
       ) : null}
 
+      {open && provider.id === "github" ? (
+        <GithubPatForm
+          onDone={async (secret) => {
+            setOpen(false);
+            if (secret) setWebhookSecret(secret);
+            setResult({ ok: true, text: "Connected. The token is stored encrypted." });
+            await onChange();
+          }}
+        />
+      ) : null}
+      {signedIn && provider.id === "github" && isGithubPat(connection) && webhookUrl ? (
+        <GithubWebhookSetup onSecret={setWebhookSecret} secret={webhookSecret} url={webhookUrl} />
+      ) : null}
       {open && provider.id === "sentry" ? (
         <SentryForm
+          webhookUrl={webhookUrl}
           onDone={async () => {
             setOpen(false);
             setResult({ ok: true, text: "Connected. The token is stored encrypted." });
@@ -282,7 +330,7 @@ function ProviderCard({
   );
 }
 
-function useSubmit(provider: Provider, onDone: () => Promise<void>) {
+function useSubmit(provider: Provider, onDone: (reply: { webhookSecret?: string | null }) => Promise<void>) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -297,13 +345,13 @@ function useSubmit(provider: Provider, onDone: () => Promise<void>) {
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const reply = (await response.json()) as { error?: string };
+      const reply = (await response.json()) as { error?: string; webhookSecret?: string | null };
       if (!response.ok) {
         setError(reply.error ?? "That didn't work.");
         return;
       }
       form.reset();
-      await onDone();
+      await onDone(reply);
     } catch {
       setError("Couldn't reach the server.");
     } finally {
@@ -353,12 +401,31 @@ function FormShell({
   );
 }
 
-function SentryForm({ onDone }: { readonly onDone: () => Promise<void> }) {
+function SentryForm({ onDone, webhookUrl }: { readonly onDone: () => Promise<void>; readonly webhookUrl?: string }) {
   const { pending, error, submit } = useSubmit("sentry", onDone);
   return (
     <FormShell error={error} onSubmit={submit} pending={pending}>
-      <Labeled hint="Settings → Developer settings → internal integration or org token" label="Auth token">
+      {webhookUrl ? (
+        <ol className="flex list-decimal flex-col gap-2 pl-5 font-mono text-xs leading-relaxed">
+          <li>
+            Quick connect, for automatic triage: in Sentry, Settings → Developer Settings → Create New Integration →{" "}
+            <b>Internal Integration</b>.
+          </li>
+          <li>
+            Permissions: Project <b>Read</b>, Issue &amp; Event <b>Read</b>, Organization <b>Read</b>. Webhooks: tick <b>issue</b>.
+          </li>
+          <li className="flex flex-col gap-1.5">
+            Webhook URL:
+            <CopyField label="Sentry webhook URL" value={webhookUrl} />
+          </li>
+          <li>Save it, then paste its Token and Client Secret below with your org and project slugs.</li>
+        </ol>
+      ) : null}
+      <Labeled hint="the integration's token (or an org token)" label="Auth token">
         {(id) => <input autoComplete="off" className={FIELD} id={id} name="token" required spellCheck={false} type="password" />}
+      </Labeled>
+      <Labeled hint="optional · turns on automatic triage (empty keeps the current one)" label="Client secret">
+        {(id) => <input autoComplete="off" className={FIELD} id={id} name="clientSecret" spellCheck={false} type="password" />}
       </Labeled>
       <div className="grid grid-cols-2 gap-3">
         <Labeled label="Org slug">
@@ -393,5 +460,135 @@ function PosthogForm({ onDone }: { readonly onDone: () => Promise<void> }) {
         </Labeled>
       </div>
     </FormShell>
+  );
+}
+
+/** A read-only value with a Copy button (webhook URL, secret). */
+function CopyField({ label, value, secret = false }: { readonly label: string; readonly value: string; readonly secret?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="flex items-stretch gap-2">
+      <input
+        aria-label={label}
+        className={cn(FIELD, "min-w-0 flex-1 py-1.5 text-xs", secret && "tracking-tight")}
+        onFocus={(event) => event.currentTarget.select()}
+        readOnly
+        spellCheck={false}
+        value={value}
+      />
+      <button aria-label={`Copy ${label}`} className={cn(BUTTON, "bg-card px-3 py-1.5")} onClick={() => void copy()} type="button">
+        {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+/** Quick connect for GitHub: a fine-grained personal access token and the repos it covers. */
+function GithubPatForm({ onDone }: { readonly onDone: (webhookSecret: string | undefined) => Promise<void> }) {
+  const { pending, error, submit } = useSubmit("github", (reply) => onDone(reply.webhookSecret ?? undefined));
+  return (
+    <FormShell error={error} onSubmit={submit} pending={pending}>
+      <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-mono text-xs leading-relaxed">
+        <li>
+          On GitHub: Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token.
+          Tip: use a bot or shared account, since Roary's comments and PRs appear as the token's user.
+        </li>
+        <li>
+          Repository access: <b>Only select repositories</b>. Permissions: <b>Contents</b>, <b>Issues</b>, <b>Pull requests</b>:
+          Read and write (Metadata: Read is added for you).
+        </li>
+        <li>Paste the token and the same repos here.</li>
+      </ol>
+      <Labeled hint="github_pat_…" label="Personal access token">
+        {(id) => <input autoComplete="off" className={FIELD} id={id} name="token" required spellCheck={false} type="password" />}
+      </Labeled>
+      <Labeled hint="owner/name, one per line or comma separated" label="Repos">
+        {(id) => (
+          <textarea
+            autoComplete="off"
+            className={cn(FIELD, "min-h-20")}
+            id={id}
+            name="repos"
+            placeholder={"acme/web\nacme/api"}
+            required
+            spellCheck={false}
+          />
+        )}
+      </Labeled>
+    </FormShell>
+  );
+}
+
+/** What to paste into each repo's Settings → Webhooks → Add webhook, so @roary and launch videos work. */
+function GithubWebhookSetup({
+  url,
+  secret,
+  onSecret,
+}: {
+  readonly url: string;
+  readonly secret?: string;
+  readonly onSecret: (secret: string) => void;
+}) {
+  const [rotating, setRotating] = useState(false);
+  const [error, setError] = useState<string>();
+  const rotate = async () => {
+    if (!window.confirm("Make a new webhook secret? The current one stops working until you paste the new one into GitHub.")) return;
+    setRotating(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/connections/github/webhook-secret", { method: "POST" });
+      const body = (await response.json()) as { webhookSecret?: string; error?: string };
+      if (!response.ok || !body.webhookSecret) setError(body.error ?? "Couldn't make a new secret.");
+      else onSecret(body.webhookSecret);
+    } catch {
+      setError("Couldn't reach the server.");
+    } finally {
+      setRotating(false);
+    }
+  };
+  return (
+    <section aria-label="GitHub webhook" className="flex flex-col gap-2 border-ink border-t-2 pt-4 font-mono text-xs">
+      <p className="uppercase">
+        For @roary mentions and launch videos: in each repo, Settings → Webhooks → <b>Add webhook</b>.
+      </p>
+      <span className="text-muted-foreground uppercase">Payload URL</span>
+      <CopyField label="GitHub payload URL" value={url} />
+      <span className="text-muted-foreground uppercase">
+        Content type: <b className="text-ink">application/json</b>
+      </span>
+      <span className="text-muted-foreground uppercase">Secret</span>
+      {secret ? (
+        <>
+          <CopyField label="GitHub webhook secret" secret value={secret} />
+          <span className="text-broken uppercase">Copy it now: it won't be shown again.</span>
+        </>
+      ) : (
+        <span>
+          Shown once when you connected.{" "}
+          <button className="underline" disabled={rotating} onClick={() => void rotate()} type="button">
+            {rotating ? "Making one…" : "Make a new secret"}
+          </button>
+        </span>
+      )}
+      <span className="text-muted-foreground uppercase">
+        Events: Let me select → <b className="text-ink">Issue comments</b>, <b className="text-ink">Issues</b>,{" "}
+        <b className="text-ink">Pull requests</b>
+      </span>
+      {error ? (
+        <span className="text-broken uppercase" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </section>
   );
 }

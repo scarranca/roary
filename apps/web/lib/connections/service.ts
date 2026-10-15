@@ -1,10 +1,12 @@
-import { openConnectionSecret, sealConnectionSecret } from "../../../../agent/lib/crypto";
+import { newWebhookSecret, openConnectionSecret, sealConnectionSecret, sealWebhookSecret } from "../../../../agent/lib/crypto";
+import { githubPatConfig, sentryInternalConfig } from "../../../../agent/lib/quick-connect-config";
 import { type SentryAppConfig, sentryAppConfig } from "../../../../agent/lib/sentry-app";
 import { getConnectionStore, InstallationClaimedError } from "./store";
 import { type Connection, type Provider, type PublicConnection, type SentryConfig, toPublic } from "./types";
 import {
   GITHUB_CONNECTOR,
   type Validation,
+  validateGithubPat,
   validatePosthog,
   validateSentry,
   validateSentryOrg,
@@ -20,20 +22,82 @@ function failed(v: Extract<Validation, { ok: false }>): SaveResult {
   return { ok: false, code: v.code, message: v.message };
 }
 
-export async function saveSentry(workspaceId: number, input: { token: string; org: string; project: string }): Promise<SaveResult> {
-  const config = { org: input.org.trim(), project: input.project.trim() };
-  const check = await validateSentry(input.token.trim(), config);
+/**
+ * A pasted Sentry token. With the internal integration's client secret too (quick connect), the
+ * secret is stored encrypted and that integration's alerts, sent to /sentry/webhook/<public id>,
+ * start triage in this workspace.
+ */
+export async function saveSentry(
+  workspaceId: number,
+  input: { token: string; org: string; project: string; clientSecret?: string },
+): Promise<SaveResult> {
+  const base = { org: input.org.trim(), project: input.project.trim() };
+  const check = await validateSentry(input.token.trim(), base);
   if (!check.ok) return failed(check);
+  const clientSecret = input.clientSecret?.trim();
   const store = await getConnectionStore();
+  // "Replace key" with the client-secret field left empty keeps automatic triage for the same org.
+  const existing = clientSecret ? null : await store.get(workspaceId, "sentry");
+  const keepWebhook = Boolean(existing?.webhookSecretCiphertext && sentryInternalConfig(existing)?.org === base.org);
+  const internal = Boolean(clientSecret) || keepWebhook;
   const connection = await store.upsert({
     workspaceId,
     provider: "sentry",
     status: "connected",
-    config,
+    config: internal ? { ...base, source: "internal" as const } : base,
     secretCiphertext: sealConnectionSecret(workspaceId, "sentry", input.token.trim()),
+    // undefined keeps the stored secret; null clears it (a plain token for another org, or none before).
+    webhookSecretCiphertext: clientSecret ? sealWebhookSecret(workspaceId, "sentry", clientSecret) : keepWebhook ? undefined : null,
     connectorRef: null,
   });
   return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
+}
+
+export type GithubPatResult = { ok: true; connection: PublicConnection; checkedVia: string; webhookSecret?: string } | { ok: false; code: string; message: string };
+
+/**
+ * Quick connect for GitHub: a fine-grained personal access token + repos, checked live, stored
+ * encrypted with config {mode: "pat", repos, login, expiresAt}. The first connect also creates
+ * the workspace's webhook secret, returned ONCE here (the card shows it with a copy button);
+ * replacing the token keeps the existing secret so the repo webhook keeps working.
+ */
+export async function saveGithubPat(workspaceId: number, input: { token: string; repos: string | string[] }): Promise<GithubPatResult> {
+  const token = input.token.trim();
+  const check = await validateGithubPat(token, input.repos);
+  if (!check.ok) return { ok: false, code: check.code, message: check.message };
+  const store = await getConnectionStore();
+  const existing = await store.get(workspaceId, "github");
+  const keepSecret = Boolean(existing?.webhookSecretCiphertext && githubPatConfig(existing));
+  const webhookSecret = keepSecret ? undefined : newWebhookSecret();
+  const connection = await store.upsert({
+    workspaceId,
+    provider: "github",
+    status: "connected",
+    config: { mode: "pat" as const, repos: check.detail.repos, login: check.detail.login, expiresAt: check.detail.expiresAt },
+    secretCiphertext: sealConnectionSecret(workspaceId, "github", token),
+    ...(webhookSecret ? { webhookSecretCiphertext: sealWebhookSecret(workspaceId, "github", webhookSecret) } : {}),
+    connectorRef: null,
+  });
+  return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia, ...(webhookSecret ? { webhookSecret } : {}) };
+}
+
+/** A new GitHub webhook secret for a token-connected workspace, returned once. The old one stops working. */
+export async function rotateGithubWebhookSecret(workspaceId: number): Promise<{ ok: true; webhookSecret: string } | { ok: false; message: string }> {
+  const store = await getConnectionStore();
+  const existing = await store.get(workspaceId, "github");
+  if (!existing || !githubPatConfig(existing)) return { ok: false, message: "Connect GitHub with a token first." };
+  const webhookSecret = newWebhookSecret();
+  const { status, config, secretCiphertext, connectorRef } = existing;
+  await store.upsert({
+    workspaceId,
+    provider: "github",
+    status,
+    config,
+    secretCiphertext,
+    connectorRef,
+    webhookSecretCiphertext: sealWebhookSecret(workspaceId, "github", webhookSecret),
+  });
+  return { ok: true, webhookSecret };
 }
 
 export async function savePosthog(workspaceId: number, input: { apiKey: string; projectId: string; host: string }): Promise<SaveResult> {
@@ -73,6 +137,7 @@ export async function claimGithubInstallation(workspaceId: number, installationI
       status: "connected",
       config: { installationId, repos: check.detail.repos },
       secretCiphertext: null, // Connect mints short-lived installation tokens on demand.
+      webhookSecretCiphertext: null, // App events arrive through Connect, not a repo webhook.
       connectorRef: GITHUB_CONNECTOR,
     });
     return { ok: true, connection: toPublic(connection), checkedVia: check.checkedVia };
@@ -127,6 +192,17 @@ async function checkSentryApp(config: SentryAppConfig): Promise<Validation> {
 }
 
 async function runCheck(row: Connection): Promise<Validation> {
+  const pat = githubPatConfig(row);
+  if (pat) {
+    if (!row.secretCiphertext) return { ok: false, code: "no_secret", message: "No token stored. Connect again." };
+    let token: string;
+    try {
+      token = openConnectionSecret({ ...row, secretCiphertext: row.secretCiphertext });
+    } catch {
+      return { ok: false, code: "undecryptable", message: "The stored token can't be read (key rotated?). Connect again." };
+    }
+    return validateGithubPat(token, pat.repos);
+  }
   if (row.provider === "github") {
     const { installationId } = row.config as Connection<"github">["config"];
     if (!installationId) return { ok: false, code: "pending", message: "Waiting for an org owner to approve the install." };

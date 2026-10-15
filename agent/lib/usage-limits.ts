@@ -169,6 +169,19 @@ export async function checkAndCountMessage(policy: LimitPolicy, now = Date.now()
   return { ok: true };
 }
 
+/**
+ * A webhook-started turn (quick-connect GitHub / Sentry webhooks) counts as one message against
+ * its workspace, like a signed-in chat message. Fails open on a database blip, like the chat.
+ */
+export async function admitWebhookMessage(workspaceId: number): Promise<LimitDecision> {
+  try {
+    return await checkAndCountMessage(workspacePolicy(workspaceId));
+  } catch (error) {
+    console.warn("usage limits unavailable; allowing the webhook", { error: error instanceof Error ? error.name : "unknown" });
+    return { ok: true };
+  }
+}
+
 export type StepUsage = {
   readonly costUsd?: number;
   readonly inputTokens?: number;

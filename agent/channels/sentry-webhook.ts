@@ -1,7 +1,8 @@
 import { defineChannel, POST } from "eve/channels";
 import { db, schema } from "../lib/db";
-import { type IssueRef, issueFromPayload, sentryAppCredentials, verifySentrySignature } from "../lib/sentry-app";
+import { issueFromPayload, sentryAppCredentials, verifySentrySignature } from "../lib/sentry-app";
 import { claimIncident, findSentryInstallation, markSentryInstallationDisconnected, sentryConnectionUsable } from "../lib/sentry-app-store";
+import { lookupShortId, triageMessage } from "../lib/sentry-triage";
 import { getDemoWorkspace, SENTRY_WEBHOOK_AUTHENTICATOR } from "../lib/workspace";
 
 // Sentry webhooks → headless triage sessions. Two senders share this URL, told apart by which
@@ -9,29 +10,9 @@ import { getDemoWorkspace, SENTRY_WEBHOOK_AUTHENTICATOR } from "../lib/workspace
 // 1. the demo shop's Internal Integration (SENTRY_WEBHOOK_SECRET) → the demo workspace, as before;
 // 2. the PUBLIC Sentry App (SENTRY_CLIENT_SECRET, only with SENTRY_PUBLIC_INTEGRATION_ENABLED=1)
 //    → the workspace that installed it, found by the payload's installation.uuid.
+// A workspace's OWN internal integration posts to /sentry/webhook/<public id> instead
+// (agent/channels/sentry-workspace-webhook.ts).
 const MAX_BODY_BYTES = 1_000_000;
-
-// event_alert payloads only carry the numeric issue id; resolve the short id when we have a token.
-async function lookupShortId(issueId: string): Promise<string | undefined> {
-  const token = process.env.SENTRY_AUTH_TOKEN;
-  if (!token) return undefined;
-  try {
-    const res = await fetch(`https://sentry.io/api/0/issues/${issueId}/`, {
-      headers: { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    return res.ok ? ((await res.json()) as { shortId?: string }).shortId : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function triageMessage(incidentKey: string, issue: IssueRef, reportOn: string): string {
-  return (
-    `Triage Sentry issue ${incidentKey} (numeric id ${issue.id}: ${issue.title})${issue.project ? ` in project ${issue.project}` : ""}. ` +
-    `This was started automatically by a Sentry alert; nobody is watching this session, so ${reportOn}.`
-  );
-}
 
 export default defineChannel({
   routes: [
@@ -99,7 +80,7 @@ export default defineChannel({
       // ---- demo shop (Internal Integration), unchanged -------------------------------------
       const issue = issueFromPayload(resource, body);
       if (!issue) return new Response("ignored", { status: 200 });
-      issue.shortId ??= await lookupShortId(issue.id);
+      issue.shortId ??= await lookupShortId(issue.id, process.env.SENTRY_AUTH_TOKEN);
       // Incidents are keyed by the Sentry short id (what humans and the skill use), numeric id as fallback.
       const incidentKey = issue.shortId ?? issue.id;
 

@@ -1,7 +1,9 @@
 # Connect your stack (per-workspace GitHub, Sentry, PostHog)
 
-A signed-in team points Roary at **their own** Sentry project and PostHog project (GitHub is
-behind a flag, see below) instead of the demo shop. Guests keep the demo shop exactly as before.
+A signed-in team points Roary at **their own** GitHub repos, Sentry project and PostHog project
+instead of the demo shop. Guests keep the demo shop exactly as before. The default is
+[Quick connect](#quick-connect-bring-your-own-keys) (paste a key, add a webhook); the GitHub App and
+the public Sentry App are second options behind flags.
 UI: the **Stack** station in `/hire` (guests can skip it with "Use the demo shop →") and
 `/settings/connections`. A signed-in user with nothing connected sees a "Connect your stack" card
 on `/desk` instead of an empty feed.
@@ -12,16 +14,20 @@ on `/desk` instead of an empty feed.
 browser (Neon Auth session) ──JWT──▶ eve channel: neonAuth() verifies (JWKS) → principal {neon-auth, user id}
                                                         │
 GitHub webhook ──▶ eve github channel: principal {github-webhook, installation_id}
+/github/webhook/<public id> ──▶ quick connect: principal {github-pat-webhook, workspace_public_id}
+/sentry/webhook/<public id> ──▶ quick connect: principal {sentry-webhook, sentry_app "internal", workspace_public_id}
 Sentry webhook / anonymous / localDev ──▶ principal without a workspace of its own
                                                         ▼
                        resolveWorkspace(principal)  (agent/lib/workspace.ts)
                          neon user        → their workspace (created on first touch)
+                         quick connect    → the workspace with that public id; unknown id → throws (never the demo)
                          github-webhook   → workspace whose github connection has that installationId, else demo
                          sentry-webhook from the public Sentry App (attributes.sentry_app = "public")
                                           → workspace whose sentry connection has that installationUuid, else demo
                          anything else    → the demo workspace ("Roary Demo Shop", is_demo)
                                                         ▼
                        credentialFor(resolved, connection, envToken)
+                         0. github mode "pat" → that PAT only while `connected`; never Connect, never the demo
                          1. connection.secret_ciphertext → decrypt (agent/lib/crypto.ts, AAD = workspace:provider)
                          2. connection.connector_ref     → Vercel Connect app token (GitHub: pinned to installationId)
                          3. demo workspace only          → env token (SENTRY_AUTH_TOKEN / POSTHOG_API_KEY)
@@ -46,9 +52,13 @@ A signed-in workspace **never** falls back to the demo's env tokens.
 | GitHub install state / user ownership check | `apps/web/lib/connections/github-state.ts`, `apps/web/lib/connections/github-user.ts` |
 | GitHub claim uniqueness | index `connections_github_installation_unique` (`drizzle/0004_github_installation_unique.sql`), `InstallationClaimedError` in `store.ts` |
 | GitHub lifecycle webhooks | `agent/lib/github-lifecycle.ts`, wrapped route in `agent/channels/github.ts` |
-| API | `GET /api/connections` (401 for guests), `POST /api/connections/{sentry,posthog}`, `POST /api/connections/{provider}/test`, `/api/connect/github/install`, `/api/connect/github/callback` |
+| API | `GET /api/connections` (401 for guests; `webhooks` = this workspace's quick-connect URLs), `POST /api/connections/{github,sentry,posthog}` (github = PAT; returns the webhook secret once), `POST /api/connections/github/webhook-secret` (rotate), `POST /api/connections/{provider}/test`, `/api/connect/github/install`, `/api/connect/github/callback` |
 | Cards | `apps/web/app/_components/connect-stack.tsx` |
 | Desk CTA | `apps/web/app/desk/_components/activity-feed.tsx` (reads `workspace` from `/api/feed`) |
+| Quick connect: config helpers / webhook targets + delivery claims | `agent/lib/quick-connect-config.ts`, `agent/lib/quick-connect.ts` |
+| Quick connect: GitHub tools' token per workspace | `agent/lib/github-token.ts`, `agent/extensions/github.ts`, `agent/hooks/turn-principal.ts`, `agent/lib/turn-principal.ts` |
+| Quick connect: webhook channels | `agent/channels/github-webhook.ts` (+ `agent/lib/github-pat-webhook.ts`), `agent/channels/sentry-workspace-webhook.ts` |
+| Quick connect: schema | `workspaces.public_id`, `connections.webhook_secret_ciphertext`, `webhook_deliveries` (`drizzle/0006_quick_connect.sql`) |
 
 Secrets never leave the server: GET returns `hasSecret`, never the ciphertext.
 
@@ -60,6 +70,111 @@ ciphertext copied into another workspace's row fails to decrypt. The web app wri
 `sealConnectionSecret(workspaceId, provider, token)`; the agent reads with `openConnectionSecret(row)`.
 The same key must be set for the web app and the agent (same Vercel project, so one env var).
 Rotating the key makes stored secrets unreadable: the card's Test button then says "Connect again".
+Quick-connect webhook secrets live in `connections.webhook_secret_ciphertext`, sealed with
+`sealWebhookSecret` (AAD `<workspaceId>:<provider>:webhook`), so a webhook secret can never be
+decrypted as the API token or vice versa.
+
+## Quick connect (bring your own keys)
+
+Any team can connect GitHub and get automatic Sentry and GitHub events **today**: no GitHub App
+install, no Sentry review. Everything is per workspace: a signed-in person's workspace gets a random
+**public id** (`workspaces.public_id`, 32 hex chars; the serial id never leaves the server), and its
+webhook URLs are:
+
+```
+https://roary-rho.vercel.app/github/webhook/<public id>     GitHub repo webhook
+https://roary-rho.vercel.app/sentry/webhook/<public id>     Sentry internal integration
+```
+
+`/settings/connections` shows both (built from the page's own origin, so a preview shows its host).
+
+### What a team does: GitHub (personal access token + repo webhook)
+
+1. Sign in at https://roary-rho.vercel.app, open **/settings/connections**.
+2. On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+   Generate new token**. Resource owner: the org (or you). **Repository access: Only select
+   repositories** → pick the repos. **Permissions → Repository**: *Contents*, *Issues*, *Pull
+   requests*: **Read and write** (*Metadata: Read* is added automatically). Pick an expiry.
+   Roary comments and opens PRs **as the token's user**, so a bot or shared account is best.
+3. GitHub card → **Quick connect** → paste the token and the repos (`owner/name`, one per line) →
+   **Check & connect**. Roary checks it live: `GET /user` (who, and the expiry from the
+   `github-authentication-token-expiration` header), then `GET /repos/{owner}/{repo}` for each repo
+   (visible, and `permissions.push` not false). The card then says
+   **Connected as @login · N repos · expires in N days** (a warning under 14 days) and has **Test**.
+4. The card shows the webhook settings and the **secret, once** (copy it now; **Make a new secret**
+   rotates it later). In **each repo → Settings → Webhooks → Add webhook**:
+   - Payload URL: `https://roary-rho.vercel.app/github/webhook/<public id>`
+   - Content type: **application/json**
+   - Secret: the one from the card
+   - Events: **Let me select individual events** → **Issue comments**, **Issues**, **Pull requests**
+   - Active → **Add webhook**. GitHub sends a `ping`; Recent Deliveries should show **200**.
+   (An org-level webhook with the same settings covers every repo at once; deliveries for repos not
+   listed on the card are ignored.)
+5. Try it: comment `@roary what does this repo do?` on an issue → Roary answers on the thread.
+   Merge a PR labeled `feature` or `launch` → Roary makes the launch video and posts it on the PR.
+
+Replacing the token (**Replace token**) keeps the webhook secret, so the repo webhooks keep working.
+
+### What a team does: Sentry (internal integration)
+
+1. In Sentry: **Settings → Developer Settings → Custom Integrations → Create New Integration →
+   Internal Integration**.
+   - Name: `Roary`
+   - Webhook URL: `https://roary-rho.vercel.app/sentry/webhook/<public id>` (copy from the Sentry card's
+     **Quick connect** form)
+   - Alert Rule Action: optional (on lets alert rules send to Roary: `event_alert`, also handled)
+   - Permissions: **Project: Read**, **Issue & Event: Read**, **Organization: Read**; the rest No Access
+   - Webhooks: tick **issue**
+   - **Save Changes**. Sentry shows a **Token** (under Tokens) and the **Client Secret** (under Credentials).
+2. Sentry card → **Quick connect** → paste the Token, the Client Secret, your org slug and project slug
+   → **Check & connect** (the token is validated live, the same check as a pasted token). Both are
+   stored encrypted.
+3. New issues in that org now start a triage in your workspace; Roary posts the incident report on
+   GitHub when GitHub is connected. Leave the Client Secret empty and it's chat-time triage only.
+
+### How it works
+
+```
+POST /github/webhook/<public id>   (agent/channels/github-webhook.ts; vercel.ts routes it to the eve service)
+  workspace by public id → its github connection must be mode "pat" with a webhook secret → else 404
+  X-Hub-Signature-256 = sha256=HMAC(that workspace's secret, raw body), timing-safe → else 401
+  ping → 200 · repo not on the card → 200 ignored
+  issue_comment.created / issues.opened mentioning @roary (not a Bot, not Roary's own marked reply)
+     → session per thread `github-pat:<public id>:<repo>#<n>`, told to reply with github__addIssueComment
+  pull_request.closed + merged + label feature|launch → the launch-video skill
+  X-GitHub-Delivery claimed in webhook_deliveries (replay → 200 duplicate)
+  admitWebhookMessage(workspace) — the #56 workspace caps; refused → 200 {reason: rate_limited},
+     claim released so a manual redeliver works later
+  from(address).send([Workspace] line + task, auth {github-pat-webhook, workspace_public_id}) → 202
+
+POST /sentry/webhook/<public id>   (agent/channels/sentry-workspace-webhook.ts)
+  workspace by public id → its sentry connection must have source "internal" + a client secret → else 404
+  sentry-hook-signature = HMAC(that workspace's client secret, body) → else 401
+  issue.created / event_alert → request-id claimed (replay → duplicate) → claimIncident(workspace, …)
+     (short-id lookup for event_alert uses THAT workspace's token, never SENTRY_AUTH_TOKEN)
+  → limits → triage session as {sentry-webhook, sentry_app "internal", workspace_public_id} → 202
+```
+
+- **GitHub tools use the PAT.** The extension hands token providers no tool context, so
+  `agent/hooks/turn-principal.ts` stores the turn's principal in durable session state on
+  `turn.started`, and `githubToken()` (`agent/lib/github-token.ts`) resolves the workspace from it:
+  mode `pat` → that PAT, only for repos on the card (case-insensitive); everything else → the GitHub
+  App via Connect exactly as before (`connectGithubToken` with the same preset/scopes, pinned to the
+  workspace's installation, the demo keeps the app default). A PAT row never serves the demo
+  workspace and a PAT workspace never reaches Connect. `list_merged_prs` / the daily launch review
+  use `githubAccessFor` → `credentialFor` → the PAT for these workspaces.
+- **No reply loop.** Replies post as the token's user, who may also be the person typing `@roary`.
+  Roary is told never to write "@roary" and to end its comments with `<!-- roary -->`; comments
+  carrying that marker, or from Bot accounts, never start a session. The workspace's hourly cap is
+  the backstop.
+- **Limits (#56):** each started webhook session counts one message against `ws:<id>` (signed-in
+  caps: `ROARY_USER_MSGS_PER_HOUR`/`_PER_DAY`, `ROARY_WORKSPACE_USD_PER_DAY`), and the channels'
+  `step.completed` records model spend on that workspace like the web chat. `turn.started` records
+  the session's owner (`chat_sessions`), so no browser can open these sessions.
+- **Compared with the GitHub App channel:** no eyes reaction, no PR diff pre-loaded, no sandbox
+  checkout; Roary reads threads and code through the `github__*` tools.
+- **Untouched:** the demo `/sentry/webhook` (shared `SENTRY_WEBHOOK_SECRET`), the public Sentry App
+  path, and the GitHub App channel `/eve/v1/github`.
 
 ## GitHub (App `myroary`, via Vercel Connect `github/roary`) — behind `GITHUB_CONNECT_ENABLED=1`
 
@@ -108,7 +223,7 @@ Rotating the key makes stored secrets unreadable: the card's Test button then sa
 `githubConnectEnabled()` reads `GITHUB_CONNECT_ENABLED` (`1` or `true`) from `process.env` on every
 request (`/api/connections` and the connect routes are dynamic), so Vercel's env scopes are the
 switch: set it on **Preview** first, **Production** only after the checklist passes. Production stays
-off (the card says "Coming soon") until someone adds the var there and redeploys.
+off (the card offers only Quick connect) until someone adds the var there and redeploys.
 `npx tsx scripts/github-connect-smoke.ts [<deployment url> | --branch <git branch>]` reports the flag
 for a deployment (from the guest 401 body of `/api/connections`) and prints the exact URLs below.
 
@@ -121,7 +236,7 @@ for a deployment (from the guest 401 body of `/api/connections`) and prints the 
    tick **Redirect on update**, Save (GitHub asks for your passkey). The App has one Setup URL, so
    this temporarily points installs at the preview.
 3. Open `https://<preview host>/hire`, sign in (Neon Auth), go to `/settings/connections`. The GitHub
-   card must say **Install Roary on your repos** (not "Coming soon").
+   card must show **Install the GitHub App** next to **Quick connect**.
 4. Click it → GitHub's install page → choose the account, **Only select repositories**, pick 1–2 → Install.
 5. First time only: Vercel Connect sends you to GitHub's **Authorize myroary** OAuth screen → **Authorize**.
    (If Connect refuses the preview host as a return URL, allow it in the Connect connector `github/roary`
@@ -145,9 +260,10 @@ for a deployment (from the guest 401 body of `/api/connections`) and prints the 
   403 (no `project:read`, true of the demo "Roary" internal integration) it falls back to
   `GET …/issues/?limit=1`, the scope triage needs. Stored encrypted.
 - Self-hosted Sentry and non-US region hosts aren't supported yet.
-- Without the public app (below), the webhook is demo-only: alerts signed with the demo's internal
-  integration secret (`SENTRY_WEBHOOK_SECRET`) go to the demo workspace. A team's own Sentry still
-  works for chat-time triage with a pasted token.
+- The shared `/sentry/webhook` is the demo's: alerts signed with the demo's internal integration
+  secret (`SENTRY_WEBHOOK_SECRET`) go to the demo workspace. A team's own alerts use
+  [Quick connect](#quick-connect-bring-your-own-keys) (their own internal integration and
+  `/sentry/webhook/<public id>`) or the public app below. A token alone works for chat-time triage.
 
 ## Sentry public integration (automatic triage per workspace) — behind `SENTRY_PUBLIC_INTEGRATION_ENABLED=1`
 
@@ -297,6 +413,11 @@ npx tsx --env-file=<that env> scripts/connections-ui-test.ts            # guest;
 # Public Sentry App, Sentry mocked, synthetic signed webhooks, no eve dev (writes + cleans up on the branch):
 neon env pull --project-id young-surf-15904408 --branch dev-connect --file .env.devconnect
 npx tsx --env-file=.env.devconnect scripts/sentry-public-integration-test.ts
+# Quick connect, no eve dev: PAT validation (GitHub mocked), signatures, routing, isolation, replay, limits,
+# Sentry per-workspace triage; + one live read-only check of the demo's Connect token when VERCEL_OIDC_TOKEN is set:
+npx tsx --env-file=.env.devconnect scripts/quick-connect-test.ts
+# Quick connect against the real agent (pkill -f "eve dev"; npx eve dev --no-ui, env on the same branch):
+npx tsx --env-file=.env.local scripts/quick-connect-eve-test.ts
 # Chat ownership + limits (eve dev AND the script with ROARY_GUEST_MSGS_PER_HOUR=3 ROARY_USER_MSGS_PER_HOUR=6):
 WEB_URL=http://localhost:3101 npx tsx --env-file=<that env> scripts/test-sessions-and-limits.ts
 BASE_URL=https://roary-rho.vercel.app npx tsx scripts/test-sessions-and-limits.ts --prod-smoke   # no DB, 1 turn
