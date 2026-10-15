@@ -1,38 +1,15 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { defineChannel, POST } from "eve/channels";
 import { db, schema } from "../lib/db";
-import { getDemoWorkspace } from "../lib/workspace";
+import { type IssueRef, issueFromPayload, sentryAppCredentials, verifySentrySignature } from "../lib/sentry-app";
+import { claimIncident, findSentryInstallation, markSentryInstallationDisconnected, sentryConnectionUsable } from "../lib/sentry-app-store";
+import { getDemoWorkspace, SENTRY_WEBHOOK_AUTHENTICATOR } from "../lib/workspace";
 
-// Sentry Internal Integration webhook → start a headless triage session.
-// Sentry signs each request with HMAC-SHA256(client secret, body) in `sentry-hook-signature`.
+// Sentry webhooks → headless triage sessions. Two senders share this URL, told apart by which
+// client secret signs `sentry-hook-signature` (HMAC-SHA256(client secret, body)):
+// 1. the demo shop's Internal Integration (SENTRY_WEBHOOK_SECRET) → the demo workspace, as before;
+// 2. the PUBLIC Sentry App (SENTRY_CLIENT_SECRET, only with SENTRY_PUBLIC_INTEGRATION_ENABLED=1)
+//    → the workspace that installed it, found by the payload's installation.uuid.
 const MAX_BODY_BYTES = 1_000_000;
-
-function safeEqualHex(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  return ab.length === bb.length && timingSafeEqual(ab, bb);
-}
-
-function verifySignature(raw: string, parsed: unknown, signature: string, secret: string): boolean {
-  const sign = (payload: string) => createHmac("sha256", secret).update(payload, "utf8").digest("hex");
-  // Sentry's own examples sign JSON.stringify(body); check the raw bytes too in case they differ.
-  return safeEqualHex(sign(raw), signature) || safeEqualHex(sign(JSON.stringify(parsed)), signature);
-}
-
-type IssueRef = { id: string; shortId?: string; title: string; project?: string };
-
-// `issue` resource (action "created") or an `event_alert` from an issue alert rule action.
-function issueFromPayload(resource: string | null, body: any): IssueRef | null {
-  if (resource === "issue" && body?.action === "created" && body.data?.issue?.id) {
-    const issue = body.data.issue;
-    return { id: String(issue.id), shortId: issue.shortId, title: issue.title ?? "Untitled error", project: issue.project?.slug };
-  }
-  if (resource === "event_alert" && body?.data?.event?.issue_id) {
-    const event = body.data.event;
-    return { id: String(event.issue_id), title: event.title ?? "Untitled error", project: event.project_slug ?? undefined };
-  }
-  return null;
-}
 
 // event_alert payloads only carry the numeric issue id; resolve the short id when we have a token.
 async function lookupShortId(issueId: string): Promise<string | undefined> {
@@ -49,11 +26,19 @@ async function lookupShortId(issueId: string): Promise<string | undefined> {
   }
 }
 
+function triageMessage(incidentKey: string, issue: IssueRef, reportOn: string): string {
+  return (
+    `Triage Sentry issue ${incidentKey} (numeric id ${issue.id}: ${issue.title})${issue.project ? ` in project ${issue.project}` : ""}. ` +
+    `This was started automatically by a Sentry alert; nobody is watching this session, so ${reportOn}.`
+  );
+}
+
 export default defineChannel({
   routes: [
     POST("/sentry/webhook", async (request, { from, waitUntil }) => {
-      const secret = process.env.SENTRY_WEBHOOK_SECRET;
-      if (!secret) return new Response("webhook not configured", { status: 503 });
+      const demoSecret = process.env.SENTRY_WEBHOOK_SECRET;
+      const publicApp = sentryAppCredentials();
+      if (!demoSecret && !publicApp) return new Response("webhook not configured", { status: 503 });
 
       const raw = await request.text();
       if (raw.length > MAX_BODY_BYTES) return new Response("payload too large", { status: 413 });
@@ -66,11 +51,53 @@ export default defineChannel({
       }
 
       const signature = request.headers.get("sentry-hook-signature") ?? "";
-      if (!signature || !verifySignature(raw, body, signature, secret)) {
-        return new Response("invalid signature", { status: 401 });
+      const resource = request.headers.get("sentry-hook-resource");
+      const isDemo = demoSecret ? verifySentrySignature(raw, body, signature, demoSecret) : false;
+      const isPublic = !isDemo && publicApp ? verifySentrySignature(raw, body, signature, publicApp.clientSecret) : false;
+      if (!isDemo && !isPublic) return new Response("invalid signature", { status: 401 });
+
+      const installationUuid = typeof body.installation?.uuid === "string" ? body.installation.uuid : undefined;
+
+      if (isPublic) {
+        // The grant code in installation.created is exchanged by the redirect callback
+        // (/api/connect/sentry/callback), which knows the workspace; here it would be unbound.
+        if (resource === "installation") {
+          if (body.action === "deleted" && installationUuid) {
+            const workspaceId = await markSentryInstallationDisconnected(installationUuid);
+            return Response.json({ ok: true, disconnected: workspaceId !== null });
+          }
+          return Response.json({ ok: true });
+        }
+        // Unknown or uninstalled installations get a 200, so Sentry doesn't disable the webhook.
+        const connection = installationUuid ? await findSentryInstallation(installationUuid) : undefined;
+        if (!connection || !sentryConnectionUsable(connection.status)) return new Response("unknown installation", { status: 200 });
+        const issue = issueFromPayload(resource, body);
+        if (!issue) return new Response("ignored", { status: 200 });
+
+        const incidentKey = issue.shortId ?? issue.id;
+        const claimed = await claimIncident(connection.workspaceId, incidentKey, issue.title);
+        if (!claimed) return new Response("already triaged", { status: 200 });
+
+        const keyNote = claimed.key === incidentKey ? "" : ` Record it with save_incident under sentryIssueId \`${claimed.key}\`.`;
+        waitUntil(
+          from(`sentry-app-issue-${issue.id}-${claimed.id}`).send(
+            triageMessage(incidentKey, issue, "post your incident report on GitHub if this workspace has GitHub connected, and save it with save_incident") + keyNote,
+            {
+              auth: {
+                authenticator: SENTRY_WEBHOOK_AUTHENTICATOR,
+                principalType: "service",
+                principalId: `sentry:${installationUuid}`,
+                // resolveWorkspace routes this turn to the installing workspace (agent/lib/workspace.ts).
+                attributes: { sentry_app: "public", installation_uuid: installationUuid! },
+              },
+            },
+          ),
+        );
+        return Response.json({ ok: true, issueId: issue.id, incident: claimed.key }, { status: 202 });
       }
 
-      const issue = issueFromPayload(request.headers.get("sentry-hook-resource"), body);
+      // ---- demo shop (Internal Integration), unchanged -------------------------------------
+      const issue = issueFromPayload(resource, body);
       if (!issue) return new Response("ignored", { status: 200 });
       issue.shortId ??= await lookupShortId(issue.id);
       // Incidents are keyed by the Sentry short id (what humans and the skill use), numeric id as fallback.
@@ -86,17 +113,13 @@ export default defineChannel({
         .returning({ id: schema.incidents.id });
       if (claimed.length === 0) return new Response("already triaged", { status: 200 });
 
-      const message =
-        `Triage Sentry issue ${incidentKey} (numeric id ${issue.id}: ${issue.title})${issue.project ? ` in project ${issue.project}` : ""}. ` +
-        `This was started automatically by a Sentry alert; nobody is watching this session, so post your incident report on GitHub.`;
-
       waitUntil(
         // One address per claim, so a re-claimed issue gets a fresh session instead of steering a parked one.
-        from(`sentry-issue-${issue.id}-${claimed[0]!.id}`).send(message, {
+        from(`sentry-issue-${issue.id}-${claimed[0]!.id}`).send(triageMessage(incidentKey, issue, "post your incident report on GitHub"), {
           auth: {
-            authenticator: "sentry-webhook",
+            authenticator: SENTRY_WEBHOOK_AUTHENTICATOR,
             principalType: "service",
-            principalId: `sentry:${body.installation?.uuid ?? "unknown"}`,
+            principalId: `sentry:${installationUuid ?? "unknown"}`,
             attributes: {},
           },
         }),

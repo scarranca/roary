@@ -7,7 +7,13 @@ import type { Provider, PublicConnection } from "@/lib/connections/types";
 import { cn } from "@/lib/utils";
 import { AuthDialog } from "./auth-dialog";
 
-type Stack = { signedIn: boolean; githubEnabled?: boolean; connections: Record<Provider, PublicConnection | null> };
+type Stack = {
+  signedIn: boolean;
+  githubEnabled?: boolean;
+  /** SENTRY_PUBLIC_INTEGRATION_ENABLED: shows "Install Roary in Sentry". */
+  sentryAppEnabled?: boolean;
+  connections: Record<Provider, PublicConnection | null>;
+};
 
 const NO_CONNECTIONS = { github: null, sentry: null, posthog: null } as const;
 
@@ -95,6 +101,7 @@ export function ConnectStack({ notice, onSkip }: { readonly notice?: ReactNode; 
               loading={!stack && !loadError}
               onChange={load}
               provider={provider}
+              sentryAppEnabled={provider.id === "sentry" && stack?.signedIn === true && stack.sentryAppEnabled === true}
               signedIn={stack?.signedIn ?? false}
               unavailable={provider.id === "github" && stack?.signedIn === true && !stack.githubEnabled && !stack.connections.github}
             />
@@ -139,7 +146,11 @@ function describe(connection: PublicConnection): string {
     if (connection.status === "error") return "GitHub suspended Roary's installation or it lost access. Run Test, or install again.";
     return `${repos.length} repo${repos.length === 1 ? "" : "s"}${repos.length ? ` · ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? "…" : ""}` : ""}`;
   }
-  if (connection.provider === "sentry") return `${config.org} / ${config.project}`;
+  if (connection.provider === "sentry") {
+    if (config.source !== "sentry-app") return `${config.org} / ${config.project}`;
+    if (connection.status === "disconnected") return `${config.org} · Roary was uninstalled in Sentry`;
+    return `${config.org} / ${config.project ?? "all projects"} · Sentry app, alerts start triage`;
+  }
   return `Project ${config.projectId} · ${String(config.host).includes("eu.") ? "EU" : "US"} cloud`;
 }
 
@@ -150,6 +161,7 @@ function ProviderCard({
   loading,
   onChange,
   unavailable = false,
+  sentryAppEnabled = false,
 }: {
   readonly provider: (typeof PROVIDERS)[number];
   readonly connection: PublicConnection | null;
@@ -157,6 +169,8 @@ function ProviderCard({
   readonly loading: boolean;
   /** GitHub connect is behind GITHUB_CONNECT_ENABLED until its ownership check is verified end to end. */
   readonly unavailable?: boolean;
+  /** Public Sentry App install (SENTRY_PUBLIC_INTEGRATION_ENABLED), next to pasting a token. */
+  readonly sentryAppEnabled?: boolean;
   readonly onChange: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -211,16 +225,26 @@ function ProviderCard({
               {connection?.status === "connected" ? "Change repos" : "Install Roary on your repos"}
               <ExternalLinkIcon className="size-3.5" />
             </a>
-          ) : (
+          ) : null}
+          {/* Hidden while the app is installed: Sentry's install page refuses a second install per org. */}
+          {provider.id === "sentry" &&
+          sentryAppEnabled &&
+          !(connection?.status !== "disconnected" && (connection?.config as { source?: string } | undefined)?.source === "sentry-app") ? (
+            <a className={cn(BUTTON, "bg-safety text-ink")} href="/api/connect/sentry/install" rel="noopener" target="_blank">
+              {connection?.status === "disconnected" ? "Install again in Sentry" : "Install Roary in Sentry"}
+              <ExternalLinkIcon className="size-3.5" />
+            </a>
+          ) : null}
+          {provider.id !== "github" ? (
             <button
               aria-expanded={open}
               className={cn(BUTTON, open ? "bg-label" : "bg-safety text-ink")}
               onClick={() => setOpen((o) => !o)}
               type="button"
             >
-              {open ? "Cancel" : connection ? "Replace key" : "Connect"}
+              {open ? "Cancel" : connection ? "Replace key" : sentryAppEnabled ? "Paste a token" : "Connect"}
             </button>
-          )}
+          ) : null}
           {connection ? (
             <button className={cn(BUTTON, "bg-card")} disabled={testing} onClick={() => void test()} type="button">
               {testing ? <LoaderIcon className="size-3.5 animate-spin" /> : null}

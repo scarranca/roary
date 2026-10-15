@@ -2,6 +2,8 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { openConnectionSecret } from "./crypto";
 import { db, schema } from "./db";
 import type { ConnectionProvider } from "./schema";
+import { sentryAppConfig } from "./sentry-app";
+import { findSentryInstallation, sentryAppToken, sentryConnectionUsable } from "./sentry-app-store";
 
 export type Workspace = typeof schema.workspaces.$inferSelect;
 export type Connection = typeof schema.connections.$inferSelect;
@@ -12,6 +14,13 @@ export const NEON_AUTH_AUTHENTICATOR = "neon-auth";
 
 /** The authenticator eve's GitHub channel stamps on webhook-started turns (defaultGitHubAuth). */
 export const GITHUB_WEBHOOK_AUTHENTICATOR = "github-webhook";
+
+/**
+ * The authenticator agent/channels/sentry-webhook.ts stamps on alert-started turns. Only turns
+ * started by the PUBLIC Sentry App (signature checked with SENTRY_CLIENT_SECRET) carry
+ * attributes {sentry_app: "public", installation_uuid}, which route to a workspace.
+ */
+export const SENTRY_WEBHOOK_AUTHENTICATOR = "sentry-webhook";
 
 /** The subset of eve's SessionAuthContext this module reads. */
 export type Principal = {
@@ -101,10 +110,19 @@ export async function findWorkspaceByGithubInstallation(installationId: string):
   return row?.workspace;
 }
 
+/** The workspace whose connected Sentry App installation this is (public integration). */
+export async function findWorkspaceBySentryInstallation(installationUuid: string): Promise<Workspace | undefined> {
+  const row = await findSentryInstallation(installationUuid);
+  if (!row || !sentryConnectionUsable(row.status)) return undefined;
+  const [workspace] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, row.workspaceId)).limit(1);
+  return workspace;
+}
+
 /**
  * The caller's workspace and its connections:
  * - a verified Neon Auth user → their own workspace (created on first touch);
  * - a GitHub webhook turn → the workspace that connected that installation, else the demo;
+ * - a public Sentry App webhook turn → the workspace that installed it, else the demo;
  * - everyone else (guests, localDev, Vercel OIDC, the Sentry webhook) → the demo workspace.
  */
 export async function resolveWorkspace(principal: Principal): Promise<ResolvedWorkspace> {
@@ -117,19 +135,26 @@ export async function resolveWorkspace(principal: Principal): Promise<ResolvedWo
     if (typeof installationId === "string" && installationId) {
       workspace = await findWorkspaceByGithubInstallation(installationId);
     }
+  } else if (principal?.authenticator === SENTRY_WEBHOOK_AUTHENTICATOR && principal.attributes?.sentry_app === "public") {
+    const installationUuid = principal.attributes.installation_uuid;
+    if (typeof installationUuid === "string" && installationUuid) {
+      workspace = await findWorkspaceBySentryInstallation(installationUuid);
+    }
   }
   workspace ??= await getDemoWorkspace();
   return { workspace, connections: await loadConnections(workspace.id) };
 }
 
 export function findConnection(resolved: ResolvedWorkspace, provider: ConnectionProvider): Connection | undefined {
-  return resolved.connections.find((c) => c.provider === provider && c.status !== "disabled");
+  // "disconnected": the provider side uninstalled Roary (GitHub or Sentry `installation.deleted`).
+  return resolved.connections.find((c) => c.provider === provider && c.status !== "disabled" && c.status !== "disconnected");
 }
 
 /**
  * The single place a provider credential is chosen, in this order:
  * 1. the connection's own secret (AES-GCM, agent/lib/crypto.ts, AAD = its workspace + provider),
- *    as saved by the web app's /api/connections routes;
+ *    as saved by the web app's /api/connections routes. A Sentry App install's token (8h) is
+ *    refreshed here when it is about to expire (agent/lib/sentry-app.ts);
  * 2. its Vercel Connect connector (`connector_ref`): an app token from that connector, pinned to
  *    the workspace's installation for `github`;
  * 3. the app-level env token, but only for the demo workspace.
@@ -141,6 +166,7 @@ export async function credentialFor(
   envToken: string | undefined,
 ): Promise<string | null> {
   if (!connection) return null;
+  if (sentryAppConfig(connection)) return sentryAppToken(connection);
   if (connection.secretCiphertext) {
     return openConnectionSecret({ ...connection, secretCiphertext: connection.secretCiphertext });
   }

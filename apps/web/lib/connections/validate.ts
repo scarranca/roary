@@ -60,6 +60,19 @@ export async function validateSentry(
   }
 }
 
+/** Sentry App install (org-wide token): GET /organizations/{org}/issues/?limit=1, the read triage needs. */
+export async function validateSentryOrg(token: string, org: string): Promise<Validation<{ org: string }>> {
+  if (!SLUG.test(org)) return { ok: false, code: "bad_input", message: "The Sentry org slug looks wrong." };
+  try {
+    const response = await call(`https://sentry.io/api/0/organizations/${org}/issues/?limit=1`, token);
+    if (response.ok) return { ok: true, checkedVia: "org-issues", detail: { org } };
+    if (response.status === 401) return { ok: false, code: "unauthorized", message: "Sentry rejected Roary's token. Install it again." };
+    return { ok: false, code: `http_${response.status}`, message: `Sentry answered ${response.status}.` };
+  } catch (error) {
+    return unreachable("Sentry", error);
+  }
+}
+
 /** PostHog: GET {host}/api/projects/{id}/ with the personal API key. A wrong region answers 401. */
 export async function validatePosthog(
   apiKey: string,

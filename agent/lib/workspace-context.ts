@@ -19,6 +19,7 @@ function describeConnection(c: Connection): string {
   const config = c.config as Record<string, unknown>;
   switch (c.provider) {
     case "sentry":
+      if (config.source === "sentry-app" && !config.project) return `Sentry org \`${config.org ?? "?"}\` (all projects, via the Roary Sentry app)`;
       return `Sentry org \`${config.org ?? "?"}\`, project \`${config.project ?? "?"}\``;
     case "posthog":
       return `PostHog project \`${config.projectId ?? "?"}\` (${config.host ?? "https://us.posthog.com"})`;
@@ -38,7 +39,7 @@ export async function workspaceContext(principal: Principal): Promise<string> {
     return "[Workspace] Couldn't load this team's workspace right now. Don't use any Sentry, PostHog or GitHub data; say the workspace is temporarily unavailable.";
   }
   const { workspace } = resolved;
-  const connected = resolved.connections.filter((c) => c.status !== "disabled");
+  const connected = resolved.connections.filter((c) => c.status !== "disabled" && c.status !== "disconnected");
   const missing = (Object.keys(LABELS) as ConnectionProvider[])
     .filter((p) => !connected.some((c) => c.provider === p))
     .map((p) => LABELS[p]);

@@ -2,20 +2,24 @@
 // (workspace, provider). `config` is public metadata; the credential lives only in
 // `secret_ciphertext` (AES-256-GCM, see ./crypto.ts).
 
+import type { SentryAppConfig } from "../../../../agent/lib/sentry-app";
+
 export const PROVIDERS = ["github", "sentry", "posthog"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
-// "disconnected": the GitHub App was uninstalled (installation.deleted webhook, agent/lib/github-lifecycle.ts).
+// "disconnected": uninstalled on the provider side (GitHub App `installation.deleted`,
+// agent/lib/github-lifecycle.ts; Sentry App `installation.deleted`, agent/lib/sentry-app-store.ts).
 export type ConnectionStatus = "pending" | "connected" | "error" | "disconnected";
 
 export type GithubConfig = { installationId: string; repos: string[] };
+/** A pasted Sentry token's org + project. */
 export type SentryConfig = { org: string; project: string };
 export type PosthogConfig = { projectId: string; host: string };
 
 export type ConfigFor<P extends Provider> = P extends "github"
   ? GithubConfig
   : P extends "sentry"
-    ? SentryConfig
+    ? SentryConfig | SentryAppConfig // the second: installed via the public Sentry App, org-wide
     : PosthogConfig;
 
 export type Connection<P extends Provider = Provider> = {
