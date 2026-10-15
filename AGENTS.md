@@ -76,7 +76,7 @@ Roary's records (incidents, launches, videos) live in **Neon Postgres** and are 
 | Neon project | `young-surf-15904408` |
 | Main branch | `production` (the real data; Roary on Vercel uses it) |
 | Client | `agent/lib/db.ts` → exports `db` and `schema` |
-| Tables | `agent/lib/schema.ts` (`incidents`, `launches`, `roary_profiles`, `workspaces`, `workspace_members`, `connections`; workspace helpers in `agent/lib/workspace.ts`) |
+| Tables | `agent/lib/schema.ts` (`incidents`, `launches`, `roary_profiles`, `workspaces`, `workspace_members`, `connections`, `chat_sessions`, `usage_counters`; workspace helpers in `agent/lib/workspace.ts`) |
 | Migrations | `drizzle/` (generated, committed) |
 | Env vars | `DATABASE_URL` (pooled, app), `DATABASE_URL_UNPOOLED` (direct, migrations) |
 
@@ -311,7 +311,7 @@ npx hyperframes preview / render / lint / check
 - We're on Vercel: every PR gets a **preview deployment**. Use it for anything webhook-driven.
 - eve schedules become **Vercel Cron Jobs** in UTC. Write cron times in UTC, not local time.
 - Rendering video in a Function is heavy. Render inside **Vercel Sandbox** (or use HyperFrames cloud render), not in the request path.
-- The eve channel auth chain is `neonAuth()` → `vercelOidc()` → `localDev()` → `none()` (`agent/channels/eve.ts`). Anonymous visitors get the demo workspace and spend model credits.
+- The eve channel auth chain is `neonAuth()` → `vercelOidc()` → guest cookie → `localDev()` (`agent/channels/eve.ts`); no `none()`. Guests get a signed `roary_guest` cookie from `apps/web/proxy.ts`, the demo workspace, and guest limits. Every `/eve/v1/session/:id` route is owner-only (`chat_sessions`) and messages are rate limited (`usage_counters`); see `docs/CONNECT.md` → Chat ownership and usage limits. A bare `curl` without a cookie or bearer gets 401 in production (locally it falls through to `localDev()`).
 - Use the single-file `memory.ts` **or** the `memory/` directory, not both.
 - Files named `*.test.*` are skipped by eve discovery.
 

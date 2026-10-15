@@ -2,9 +2,11 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -128,3 +130,30 @@ export const roaryProfiles = pgTable("roary_profiles", {
   workspaceId: integer("workspace_id").references(() => workspaces.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Who owns each web chat (eve session). Recorded on first touch / session start; the eve channel
+// (agent/channels/eve.ts) refuses every /eve/v1/session/:id route to anyone else.
+// owner_key is `<authenticator>:<principalId>`: `neon-auth:<user id>`, `guest:<cookie id>`, ...
+export const chatSessions = pgTable("chat_sessions", {
+  sessionId: text("session_id").primaryKey(),
+  ownerKey: text("owner_key").notNull(),
+  workspaceId: integer("workspace_id").references(() => workspaces.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Fixed-window usage per scope (`ws:<workspace id>` or `guest:<cookie id>`): messages sent in the
+// window, and the model spend AI Gateway reported for it. See agent/lib/usage-limits.ts.
+export const usageCounters = pgTable(
+  "usage_counters",
+  {
+    scopeKey: text("scope_key").notNull(),
+    period: text("period", { enum: ["hour", "day"] }).notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    messages: integer("messages").notNull().default(0),
+    costUsd: doublePrecision("cost_usd").notNull().default(0),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "usage_counters_pk", columns: [t.scopeKey, t.period, t.windowStart] })],
+);

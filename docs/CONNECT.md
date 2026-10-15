@@ -230,6 +230,43 @@ Personal API key (scope preset "MCP Server") + project id + US/EU cloud. Validat
 The wrong region answers 401, and the UI says so. Stored encrypted; the PostHog MCP connection
 picks it per turn.
 
+## Chat ownership and usage limits
+
+eve's route auth admits a caller but does not check that a session is theirs (its docs: "session
+ownership remains an application policy"), so `agent/channels/eve.ts` adds that policy in its one
+`AuthFn`, which runs on every `/eve/v1` route:
+
+- **Who's calling:** `neonAuth()` → `vercelOidc()` → **guest cookie** → `localDev()`. There is no
+  `none()`: the web app's proxy (`apps/web/proxy.ts`) gives every browser a signed httpOnly
+  `roary_guest=<id>.<hmac>` cookie (HKDF subkey of `CONNECTIONS_ENCRYPTION_KEY`, `agent/lib/crypto.ts`)
+  on its first page load, so a guest is a stable `roary-guest:<id>`. A request with no identity gets
+  `401 guest_cookie_required`.
+- **Ownership (`chat_sessions`, `agent/lib/chat-sessions.ts`):** owner key `<authenticator>:<principalId>`
+  plus the workspace. Recorded by the first caller to touch a new session id (the creator: eve only
+  returns the id to them) and by the channel's `turn.started` handler from the session initiator.
+  Every `/eve/v1/session/:id/*` route (send, stream, cancel, clear, compact, reset, subagent streams)
+  answers `403 session_forbidden` to anyone else. A guest who signs in keeps their guest chats in that
+  browser (the cookie still matches). `/desk/s/<id>` is a 404 page for non-owners
+  (`apps/web/lib/chat-access.ts`). Sessions created before this shipped have no row; the first
+  person to open one claims it.
+- **Limits (`usage_counters`, `agent/lib/usage-limits.ts`):** a POST that carries a `message`
+  (not a bodyless prewarm, not an approval answer) counts against `guest:<id>` or `ws:<workspace id>`
+  in fixed UTC hour/day windows. Model spend comes from `step.completed.usage.costUsd` (AI Gateway
+  reports it) and is added to the day row of the workspace and, for guests, the guest. A full window
+  or budget answers `429 rate_limited` with `Retry-After` and "Roary's taking a breather — … Resets in
+  X", which the chat shows as a calm Roary bubble. Refused messages aren't counted. localDev, the eve
+  TUI (Vercel OIDC) and team deployments aren't limited.
+
+| Limit | Env | Default |
+|---|---|---|
+| Guest messages / hour, / day | `ROARY_GUEST_MSGS_PER_HOUR`, `ROARY_GUEST_MSGS_PER_DAY` | 20, 60 |
+| Guest spend / day (USD) | `ROARY_GUEST_USD_PER_DAY` | 3 |
+| All guests together (demo workspace) spend / day | `ROARY_DEMO_USD_PER_DAY` | 50 |
+| Signed-in workspace messages / hour, / day | `ROARY_USER_MSGS_PER_HOUR`, `ROARY_USER_MSGS_PER_DAY` | 100, 500 |
+| Signed-in workspace spend / day (USD) | `ROARY_WORKSPACE_USD_PER_DAY` | 20 |
+
+`0` or `off` removes a cap.
+
 ## Env
 
 | Name | Where | Notes |
@@ -260,4 +297,7 @@ npx tsx --env-file=<that env> scripts/connections-ui-test.ts            # guest;
 # Public Sentry App, Sentry mocked, synthetic signed webhooks, no eve dev (writes + cleans up on the branch):
 neon env pull --project-id young-surf-15904408 --branch dev-connect --file .env.devconnect
 npx tsx --env-file=.env.devconnect scripts/sentry-public-integration-test.ts
+# Chat ownership + limits (eve dev AND the script with ROARY_GUEST_MSGS_PER_HOUR=3 ROARY_USER_MSGS_PER_HOUR=6):
+WEB_URL=http://localhost:3101 npx tsx --env-file=<that env> scripts/test-sessions-and-limits.ts
+BASE_URL=https://roary-rho.vercel.app npx tsx scripts/test-sessions-and-limits.ts --prod-smoke   # no DB, 1 turn
 ```
