@@ -302,7 +302,7 @@ npx hyperframes preview / render / lint / check
 - We're on Vercel: every PR gets a **preview deployment**. Use it for anything webhook-driven.
 - eve schedules become **Vercel Cron Jobs** in UTC. Write cron times in UTC, not local time.
 - Rendering video in a Function is heavy. Render inside **Vercel Sandbox** (or use HyperFrames cloud render), not in the request path.
-- Replace `placeholderAuth()` before any public deployment.
+- The eve channel auth chain is `neonAuth()` → `vercelOidc()` → `localDev()` → `none()` (`agent/channels/eve.ts`). Anonymous visitors get the demo workspace and spend model credits.
 - Use the single-file `memory.ts` **or** the `memory/` directory, not both.
 - Files named `*.test.*` are skipped by eve discovery.
 
