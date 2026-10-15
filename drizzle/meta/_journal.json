@@ -29,6 +29,13 @@
       "when": 1792021324033,
       "tag": "0003_workspaces",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792036936400,
+      "tag": "0004_github_installation_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -43,6 +43,7 @@ export const workspaceMembers = pgTable(
 
 export const CONNECTION_PROVIDERS = ["github", "sentry", "posthog"] as const;
 export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number];
+export const GITHUB_INSTALLATION_INDEX = "connections_github_installation_unique";
 
 // One row per (workspace, provider). `config` is non-secret routing (github: {installationId,
 // repos[]}; sentry: {org, project}; posthog: {projectId, host}). Tokens live encrypted in
@@ -66,6 +67,12 @@ export const connections = pgTable(
   (t) => [
     unique("connections_workspace_provider_unique").on(t.workspaceId, t.provider),
     check("connections_provider_check", sql`${t.provider} in ('github', 'sentry', 'posthog')`),
+    // One GitHub App installation belongs to at most one workspace. This makes "first claim wins"
+    // atomic: a second workspace's upsert fails with 23505 instead of racing past a read check.
+    // Pending rows (installationId "") and the demo row (none) are excluded.
+    uniqueIndex(GITHUB_INSTALLATION_INDEX)
+      .on(sql`(${t.config}->>'installationId')`)
+      .where(sql`${t.provider} = 'github' and coalesce(${t.config}->>'installationId', '') <> ''`),
   ],
 );
 

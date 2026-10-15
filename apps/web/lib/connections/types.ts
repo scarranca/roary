@@ -5,7 +5,8 @@
 export const PROVIDERS = ["github", "sentry", "posthog"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
-export type ConnectionStatus = "pending" | "connected" | "error";
+// "disconnected": the GitHub App was uninstalled (installation.deleted webhook, agent/lib/github-lifecycle.ts).
+export type ConnectionStatus = "pending" | "connected" | "error" | "disconnected";
 
 export type GithubConfig = { installationId: string; repos: string[] };
 export type SentryConfig = { org: string; project: string };

@@ -13,9 +13,19 @@ const GITHUB_NOTICES: Record<string, { ok: boolean; text: string }> = {
   error: { ok: false, text: "GitHub install didn't finish." },
 };
 
+// Failure details worth saying in words; anything else is shown as its code.
+const GITHUB_ERROR_DETAILS: Record<string, string> = {
+  claimed: "That GitHub installation is already connected to another Roary workspace.",
+  not_your_installation: "Your GitHub account can't access that installation.",
+  state_expired: "The install link expired. Start again.",
+  state_browser: "Finish the install in the same browser you started it in.",
+};
+
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { github, detail } = await searchParams;
-  const notice = github ? GITHUB_NOTICES[github] : undefined;
+  const base = github ? GITHUB_NOTICES[github] : undefined;
+  const explained = github === "error" && detail ? GITHUB_ERROR_DETAILS[detail] : undefined;
+  const notice = base && explained ? { ok: false, text: explained } : base;
   return (
     <div className="flex min-h-dvh flex-col">
       <SiteHeader />
@@ -38,7 +48,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                 role="status"
               >
                 {notice.text}
-                {detail && !notice.ok ? ` (${detail.replace(/[^a-z0-9_]/gi, "")})` : null}
+                {detail && !notice.ok && !explained ?` (${detail.replace(/[^a-z0-9_]/gi, "")})` : null}
               </p>
             ) : null
           }

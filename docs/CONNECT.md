@@ -42,6 +42,8 @@ A signed-in workspace **never** falls back to the demo's env tokens.
 | Live validators | `apps/web/lib/connections/validate.ts` |
 | Validate → encrypt → store | `apps/web/lib/connections/service.ts` |
 | GitHub install state / user ownership check | `apps/web/lib/connections/github-state.ts`, `apps/web/lib/connections/github-user.ts` |
+| GitHub claim uniqueness | index `connections_github_installation_unique` (`drizzle/0004_github_installation_unique.sql`), `InstallationClaimedError` in `store.ts` |
+| GitHub lifecycle webhooks | `agent/lib/github-lifecycle.ts`, wrapped route in `agent/channels/github.ts` |
 | API | `GET /api/connections` (401 for guests), `POST /api/connections/{sentry,posthog}`, `POST /api/connections/{provider}/test`, `/api/connect/github/install`, `/api/connect/github/callback` |
 | Cards | `apps/web/app/_components/connect-stack.tsx` |
 | Desk CTA | `apps/web/app/desk/_components/activity-feed.tsx` (reads `workspace` from `/api/feed`) |
@@ -69,20 +71,71 @@ Rotating the key makes stored secrets unreadable: the card's Test button then sa
    Without one it redirects to `startAuthorization(...)` and Connect brings them back to the same
    callback URL. The installation must appear in `GET /user/installations`, otherwise nothing is saved.
 4. **Verify + store**: an app installation token from Connect lists `config.repos`; the row stores
-   `{installationId, repos}` with `connector_ref = 'github/roary'` and no secret. First claim wins.
+   `{installationId, repos}` with `connector_ref = 'github/roary'` and no secret.
+   **First claim wins, atomically:** the partial unique index `connections_github_installation_unique`
+   on `(config->>'installationId') WHERE provider = 'github' AND installationId <> ''`
+   (`drizzle/0004_github_installation_unique.sql`) rejects a second workspace's upsert with 23505;
+   the store turns that into `InstallationClaimedError` and the callback into
+   `?github=error&detail=claimed` ("already connected to another Roary workspace"). The read before
+   it is only the friendly fast path. Pending rows (`installationId: ""`) and the demo row are excluded.
 5. **Agent**: the GitHub extension's per-caller `connect` resolver pins tool calls to that
-   installation and its repos for a signed-in workspace; the demo keeps the app default.
+   installation and its repos for a signed-in workspace; the demo keeps the app default. Any status
+   other than `connected` (`error`, `disconnected`, `pending`) blocks GitHub tools for that workspace.
 6. **Webhooks**: `@roary` mentions / PR events carry `installation_id`; `resolveWorkspace` routes
    them to the workspace that connected that installation. Unclaimed installs (the demo shop) → demo.
+7. **Lifecycle webhooks** (`agent/lib/github-lifecycle.ts`, wired in `agent/channels/github.ts`).
+   eve's `githubChannel` ignores App lifecycle events, so the channel's `POST /eve/v1/github` route is
+   wrapped: `installation` / `installation_repositories` deliveries are verified with the same Connect
+   verifier (Vercel OIDC) and routed by `payload.installation.id`; every other event goes to eve with
+   the body untouched. Under `SELECT … FOR UPDATE`:
 
-**Why it's off in production:** steps 3–4 can't be verified end to end without a person clicking
-through GitHub's OAuth screen, and the App's *Setup URL* must be set to
-`https://<host>/api/connect/github/callback` ("Redirect on update" on) — a production App setting
-that wasn't changed. Unit tests cover the ownership check (`scripts/connections-crypto-test.ts`) and
-the live test confirms Connect starts user authorization for `github/roary`
-(`scripts/connections-providers-test.ts`). To turn it on: set the Setup URL, set
-`GITHUB_CONNECT_ENABLED=1` on a preview, connect a real install, then enable in production.
-Not done yet: handling `installation.deleted` / `installation_repositories` events to update rows.
+   | Event | Effect on that workspace's `github` row |
+   |---|---|
+   | `installation.deleted` | `status = 'disconnected'` (id kept; GitHub never reuses ids, a reinstall is claimed again) |
+   | `installation.suspend` | `status = 'error'` |
+   | `installation.unsuspend` | `error` → `connected` (never resurrects `disconnected`) |
+   | `installation_repositories` (added/removed) | `config.repos` minus removed plus added (set-based, retry-safe) |
+   | `installation.created`, unclaimed installation ids | ignored (ownership is proven by the callback) |
+
+   Unverified → 401. A database error → 500 so GitHub's "Recent Deliveries" can redeliver.
+   **Unverified in production:** that Vercel Connect forwards `installation*` events to the trigger
+   destination like it does `issue_comment`. Step 7–9 of the checklist below proves it.
+
+### The flag is per environment
+
+`githubConnectEnabled()` reads `GITHUB_CONNECT_ENABLED` (`1` or `true`) from `process.env` on every
+request (`/api/connections` and the connect routes are dynamic), so Vercel's env scopes are the
+switch: set it on **Preview** first, **Production** only after the checklist passes. Production stays
+off (the card says "Coming soon") until someone adds the var there and redeploys.
+`npx tsx scripts/github-connect-smoke.ts [<deployment url> | --branch <git branch>]` reports the flag
+for a deployment (from the guest 401 body of `/api/connections`) and prints the exact URLs below.
+
+### Human checklist to turn GitHub on (needs a passkey / OAuth consent — agents must not do these)
+
+1. **Preview env:** `vercel env add GITHUB_CONNECT_ENABLED preview` → `1`, then redeploy the preview
+   (push a commit or `vercel redeploy <preview url>`). Run the smoke script: `githubEnabled=true`.
+2. **GitHub App Setup URL** (github.com → Settings → Developer settings → GitHub Apps → `myroary`,
+   App id 5320987 → General): *Setup URL* = `https://<preview host>/api/connect/github/callback`,
+   tick **Redirect on update**, Save (GitHub asks for your passkey). The App has one Setup URL, so
+   this temporarily points installs at the preview.
+3. Open `https://<preview host>/hire`, sign in (Neon Auth), go to `/settings/connections`. The GitHub
+   card must say **Install Roary on your repos** (not "Coming soon").
+4. Click it → GitHub's install page → choose the account, **Only select repositories**, pick 1–2 → Install.
+5. First time only: Vercel Connect sends you to GitHub's **Authorize myroary** OAuth screen → **Authorize**.
+   (If Connect refuses the preview host as a return URL, allow it in the Connect connector `github/roary`
+   settings and retry; this is the one Connect behaviour not yet seen live.)
+6. You land on `/settings/connections?github=connected`; the card shows **✅ Connected · N repos**.
+   Try a second Roary account with the same installation: it must get "already connected to another
+   Roary workspace".
+7. On GitHub → Settings → Applications → myroary → **Configure**: remove a repo, Save → reload the card,
+   the repo is gone. Add it back → it returns. (No change? Check Vercel logs for `github lifecycle` and
+   the App's Advanced → Recent Deliveries.)
+8. Suspend the installation → card **❌ Needs attention**; Unsuspend → **✅ Connected**.
+9. Comment `@roary hi` on an issue in a connected repo → Roary answers in that workspace's context.
+10. **Production:** set the Setup URL to `https://roary-rho.vercel.app/api/connect/github/callback`
+    (Redirect on update on), `vercel env add GITHUB_CONNECT_ENABLED production` → `1`, redeploy, and
+    repeat steps 3–6 on production. Roll back by removing the env var and redeploying: new installs
+    stop (the install/callback routes answer "unavailable"); already connected workspaces keep working.
 
 ## Sentry
 
@@ -112,7 +165,7 @@ picks it per turn.
 | `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` | web + agent | Sign-in (web) and JWT verification (eve). |
 | `DATABASE_URL` | web + agent | The `connections` table. |
 | `VERCEL_OIDC_TOKEN` | automatic on Vercel | Connect tokens for `github/roary`; local: `vercel env pull`. |
-| `GITHUB_CONNECT_ENABLED=1` | optional | Shows the GitHub connect button and enables the install/callback routes. |
+| `GITHUB_CONNECT_ENABLED=1` | optional, per Vercel environment | `1`/`true` shows the GitHub connect button and enables the install/callback routes. Read per request; set on Preview first. |
 | `CONNECTIONS_STORE=memory` | tests only | In-memory store. |
 | `GITHUB_CONNECTOR`, `GITHUB_APP_SLUG` | optional | Default `github/roary`, `myroary`. |
 
@@ -121,6 +174,9 @@ picks it per turn.
 ```bash
 npx tsx scripts/connections-crypto-test.ts                               # no network: crypto, web→agent decrypt, GitHub ownership check
 npx tsx --env-file=.env.local scripts/connections-providers-test.ts      # live Sentry, PostHog, GitHub via Connect (memory store)
+npx tsx scripts/github-connect-test.ts                                   # flag, claim rules, lifecycle webhooks (synthetic payloads)
+npx tsx --env-file=.env.devconnect scripts/github-connect-test.ts       # + concurrent claim race and lifecycle on Postgres (non-production branch, 0004 applied)
+npx tsx scripts/github-connect-smoke.ts <deployment url>                 # flag state + the URLs to click for the manual test
 # On a NON-production Neon branch (env with NEON_BRANCH != production, NEON_AUTH_*):
 npx eve dev --no-ui & npx next dev apps/web -p 3101 &
 npx tsx --env-file=<that env> scripts/test-workspaces.ts                # a–d, d = full web → agent round trip

@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { GITHUB_INSTALLATION_INDEX } from "../../../../agent/lib/schema";
 import type { ConfigFor, Connection, ConnectionStatus, Provider } from "./types";
 
 // Typed repository over the real `connections` table (agent/lib/schema.ts, migration
@@ -14,6 +15,29 @@ export type UpsertConnection<P extends Provider> = {
   secretCiphertext: string | null;
   connectorRef: string | null;
 };
+
+/**
+ * Another workspace already holds this GitHub installation. Postgres enforces it atomically with
+ * the partial unique index connections_github_installation_unique (drizzle/0004), so two
+ * concurrent claims can't both win; the memory store mirrors the rule for tests.
+ */
+export class InstallationClaimedError extends Error {
+  readonly code = "claimed";
+  constructor() {
+    super("That GitHub installation is already connected to another workspace.");
+    this.name = "InstallationClaimedError";
+  }
+}
+
+/** Is this the unique violation from that index? pg's error may arrive wrapped by Drizzle (`cause`). */
+export function isInstallationConflict(error: unknown): boolean {
+  let current = error as { code?: unknown; constraint?: unknown; cause?: unknown } | undefined;
+  for (let depth = 0; current && depth < 4; depth++) {
+    if (current.code === "23505" && current.constraint === GITHUB_INSTALLATION_INDEX) return true;
+    current = current.cause as typeof current;
+  }
+  return false;
+}
 
 export interface ConnectionStore {
   readonly kind: "postgres" | "memory";
@@ -42,6 +66,16 @@ export function createMemoryStore(rows: MemoryRows = new Map()): ConnectionStore
       return (rows.get(key(workspaceId, provider)) as Connection<typeof provider> | undefined) ?? null;
     },
     async upsert(row) {
+      const installationId = row.provider === "github" ? (row.config as ConfigFor<"github">).installationId : "";
+      const heldElsewhere =
+        installationId &&
+        [...rows.values()].some(
+          (r) =>
+            r.provider === "github" &&
+            r.workspaceId !== row.workspaceId &&
+            (r.config as ConfigFor<"github">).installationId === installationId,
+        );
+      if (heldElsewhere) throw new InstallationClaimedError();
       const saved = { ...row, updatedAt: new Date().toISOString() } as Connection<typeof row.provider>;
       rows.set(key(row.workspaceId, row.provider), saved);
       return saved;
@@ -106,7 +140,10 @@ async function createPostgresStore(): Promise<ConnectionStore> {
             updatedAt: sql`now()`,
           },
         })
-        .returning();
+        .returning()
+        .catch((error: unknown) => {
+          throw isInstallationConflict(error) ? new InstallationClaimedError() : error;
+        });
       return fromRow(row!) as Connection<typeof input.provider>;
     },
     async setStatus(workspaceId, provider, status) {
