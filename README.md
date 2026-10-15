@@ -72,20 +72,26 @@ Anyone can try Roary on the **demo shop** without signing in. A team that signs 
 
 1. **Sign in** (top-right) at [roary-rho.vercel.app](https://roary-rho.vercel.app). Your workspace is created on first use.
 2. Open **`/settings/connections`** (or the **Stack** station while hiring in `/hire`).
-3. **Sentry**: paste an auth token (internal integration or org token with *Project: Read* and
-   *Issue & Event: Read*) plus your org and project slugs. Roary checks it live before saving.
-4. **PostHog**: paste a personal API key (scope preset "MCP Server"), your project id and US/EU cloud.
-5. Go to **`/desk`** and ask Roary what broke. It reads *your* Sentry and *your* PostHog. It never
-   uses the demo shop's data for a signed-in workspace.
+3. **GitHub → Quick connect**: paste a fine-grained personal access token (Contents, Issues,
+   Pull requests: Read and write) and the repos it covers. Then add a webhook in each repo with the
+   **Payload URL** and **secret** the card shows (content type `application/json`; events: Issue
+   comments, Issues, Pull requests): `@roary` comments get answers and merged `feature`/`launch` PRs
+   get launch videos. Roary posts as the token's user, so a bot account is a good idea.
+4. **Sentry → Quick connect**: create an *Internal Integration* in your Sentry org (Project,
+   Issue & Event, Organization: Read; webhook **issue**) with the **Webhook URL** the card shows, then
+   paste its token, client secret, org and project. New issues start a triage automatically. (Token
+   only, without the client secret, still works for chat-time triage.)
+5. **PostHog**: paste a personal API key (scope preset "MCP Server"), your project id and US/EU cloud.
+6. Go to **`/desk`** and ask Roary what broke. It reads *your* Sentry, *your* PostHog and *your*
+   repos. It never uses the demo shop's data or credentials for a signed-in workspace.
 
 Keys are validated live, stored encrypted (AES-256-GCM, bound to your workspace), and never sent
-back to the browser. The **Test** button re-checks a stored key server side.
+back to the browser. The **Test** button re-checks a stored key server side. The webhook URLs use a
+random per-workspace id, and each delivery is checked against *that* workspace's secret.
 
-**GitHub** connect (install the `myroary` App on your repos) is built but **off by default**
-(`GITHUB_CONNECT_ENABLED`): before saving an installation, the app proves you can access it through
-a GitHub user token from Vercel Connect, and that round trip still needs end-to-end verification
-plus an App setting change. Until then, Roary reads code and opens PRs only on the demo shop's repo.
-Sentry **alert webhooks** also stay demo-only. Details: [`docs/CONNECT.md`](./docs/CONNECT.md).
+The **GitHub App** install (`myroary`, via Vercel Connect) is the second option on the GitHub card,
+**off by default** (`GITHUB_CONNECT_ENABLED`) until its ownership round trip is verified end to end.
+Step-by-step guide and design: [`docs/CONNECT.md`](./docs/CONNECT.md) → *Quick connect*.
 
 ## Project layout
 

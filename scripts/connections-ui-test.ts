@@ -78,6 +78,19 @@ if (MODE === "guest") {
     expect("…and the callback binds nothing", (cb.headers.get("location") ?? "").includes("github=unavailable"));
   }
 
+  // Quick connect: this workspace's own webhook URLs, and the PAT form refuses a bad token live.
+  const hooks = list.body.webhooks as { github?: string; sentry?: string } | undefined;
+  expect(
+    "quick connect: per-workspace webhook URLs (public id, not the serial id)",
+    /\/github\/webhook\/[0-9a-f]{32}$/.test(hooks?.github ?? "") && /\/sentry\/webhook\/[0-9a-f]{32}$/.test(hooks?.sentry ?? ""),
+  );
+  const badPat = await post("/api/connections/github", { token: `github_pat_${"0".repeat(82)}`, repos: "scarranca/roary-demo-shop" });
+  expect("quick connect: a bad GitHub token is a 422 (checked live, nothing stored)", badPat.status === 422 && badPat.body.code === "unauthorized", String(badPat.status));
+  const noRepos = await post("/api/connections/github", { token: `github_pat_${"0".repeat(82)}`, repos: "not a repo" });
+  expect("quick connect: malformed repos are refused", noRepos.status === 422 || noRepos.status === 400);
+  const rotate = await post("/api/connections/github/webhook-secret");
+  expect("quick connect: no new webhook secret without a token connection", rotate.status === 409);
+
   if (process.env.SENTRY_AUTH_TOKEN) {
     const sentry = await post("/api/connections/sentry", { token: process.env.SENTRY_AUTH_TOKEN, org: "roary", project: "javascript-nextjs-k4" });
     expect("connect Sentry with the demo token", sentry.status === 200, `${sentry.status} via ${sentry.body.checkedVia ?? sentry.body.error}`);

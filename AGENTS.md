@@ -76,7 +76,7 @@ Roary's records (incidents, launches, videos) live in **Neon Postgres** and are 
 | Neon project | `young-surf-15904408` |
 | Main branch | `production` (the real data; Roary on Vercel uses it) |
 | Client | `agent/lib/db.ts` → exports `db` and `schema` |
-| Tables | `agent/lib/schema.ts` (`incidents`, `launches`, `roary_profiles`, `workspaces`, `workspace_members`, `connections`, `chat_sessions`, `usage_counters`; workspace helpers in `agent/lib/workspace.ts`) |
+| Tables | `agent/lib/schema.ts` (`incidents`, `launches`, `roary_profiles`, `workspaces`, `workspace_members`, `connections`, `chat_sessions`, `usage_counters`, `webhook_deliveries`; workspace helpers in `agent/lib/workspace.ts`) |
 | Migrations | `drizzle/` (generated, committed) |
 | Env vars | `DATABASE_URL` (pooled, app), `DATABASE_URL_UNPOOLED` (direct, migrations) |
 
@@ -210,6 +210,8 @@ Full design: `docs/CONNECT.md`. The rules you must not break:
   verified Neon Auth user → their own workspace (created on first touch); a GitHub webhook → the
   workspace that connected that `installation_id`, else the demo; a public Sentry App alert → the
   workspace that installed that `installation.uuid` (behind `SENTRY_PUBLIC_INTEGRATION_ENABLED`);
+  a quick-connect webhook (`/github/webhook/<public id>`, `/sentry/webhook/<public id>`, signed with
+  that workspace's own secret) → exactly that workspace, never the demo;
   everyone else (guests, localDev, the demo shop's Sentry webhook) → the single `is_demo` workspace
   "Roary Demo Shop". In tools use
   `workspaceForTurn(ctx)` (`agent/lib/workspace-context.ts`); in the web app use
@@ -219,7 +221,10 @@ Full design: `docs/CONNECT.md`. The rules you must not break:
   write them filtered by the turn's workspace.
 - **Credentials come from `credentialFor()` only.** Order: the row's `secret_ciphertext` → its
   `connector_ref` (Vercel Connect) → the env token, **demo workspace only**. A signed-in workspace
-  never falls back to `SENTRY_AUTH_TOKEN` / `POSTHOG_API_KEY`.
+  never falls back to `SENTRY_AUTH_TOKEN` / `POSTHOG_API_KEY`. A GitHub connection with
+  `config.mode = "pat"` (quick connect) uses only its personal access token; the GitHub tools pick
+  it per turn in `agent/lib/github-token.ts` (the turn's principal comes from
+  `agent/hooks/turn-principal.ts`, because the extension's token provider gets no tool context).
 - **One encryption helper: `agent/lib/crypto.ts`.** Write with `sealConnectionSecret(workspaceId,
   provider, token)`, read with `openConnectionSecret(row)`. The AAD binds a ciphertext to its row.
   Don't add a second cipher anywhere; the web app imports this file.
